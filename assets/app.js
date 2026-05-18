@@ -287,10 +287,10 @@
       ingestLimit: state.settings.limit,
       cloudSyncLimit: state.settings.limit
     }, extraBody || {});
-    logDebug("fetch request prepared", {
+      logDebug("fetch request prepared", {
       endpoint: state.settings.endpoint,
       method: "POST",
-      contentType: "text/plain;charset=UTF-8",
+      contentType: "application/x-www-form-urlencoded;charset=UTF-8",
       timeoutMs: REQUEST_TIMEOUT_MS,
       body: redactRequestBody(body)
     });
@@ -300,9 +300,9 @@
       const response = await fetch(state.settings.endpoint, {
         method: "POST",
         mode: "cors",
-        headers: { "content-type": "text/plain;charset=UTF-8" },
+        headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
         signal: controller.signal,
-        body: JSON.stringify(body)
+        body: `payload=${encodeURIComponent(JSON.stringify(body))}`
       });
       logDebug("fetch response headers received", {
         elapsedMs: Date.now() - startedAt,

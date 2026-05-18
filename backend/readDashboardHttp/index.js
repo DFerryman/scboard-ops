@@ -40,12 +40,46 @@ function http(statusCode, payload) {
 function parseBody(event) {
   if (!event || !event.body) return {}
   if (typeof event.body === 'object') return event.body
+  const rawBody = event.isBase64Encoded
+    ? Buffer.from(String(event.body), 'base64').toString('utf8')
+    : String(event.body)
+
+  const direct = parseBodyText(rawBody)
+  if (direct) return direct
+
   try {
-    return JSON.parse(event.body)
+    const params = new URLSearchParams(rawBody)
+    const payload = params.get('payload') || params.get('body') || params.get('data')
+    if (payload) {
+      const parsed = parseBodyText(payload)
+      if (parsed) return parsed
+    }
+    const obj = {}
+    for (const [key, value] of params.entries()) {
+      obj[key] = value
+    }
+    if (Object.keys(obj).length > 0) return obj
   } catch (_) {
-    const err = new Error('invalid JSON body')
-    err.statusCode = 400
-    throw err
+    // fall through
+  }
+
+  const err = new Error('invalid JSON body')
+  err.statusCode = 400
+  err.bodyPreview = rawBody.slice(0, 200)
+  throw err
+}
+
+function parseBodyText(text) {
+  const raw = String(text || '').trim()
+  if (!raw) return {}
+  try {
+    return JSON.parse(raw)
+  } catch (_) {
+    try {
+      return JSON.parse(decodeURIComponent(raw))
+    } catch (_) {
+      return null
+    }
   }
 }
 
