@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "scboard.ops.settings";
   const SESSION_TOKEN_KEY = "scboard.ops.token";
-  const APP_VERSION = "ops-debug-2026-05-18-3";
+  const APP_VERSION = "ops-debug-2026-05-18-5";
   const DEFAULT_LIMIT = 20;
   const DEFAULT_REFRESH_SECONDS = 60;
   const REQUEST_TIMEOUT_MS = 15000;
@@ -337,7 +337,7 @@
       logDebug("fetch request prepared", {
       endpoint: state.settings.endpoint,
       method: "POST",
-      contentType: "application/x-www-form-urlencoded;charset=UTF-8",
+      contentType: "text/plain;charset=UTF-8",
       timeoutMs: REQUEST_TIMEOUT_MS,
       body: redactRequestBody(body)
     });
@@ -347,9 +347,9 @@
       const response = await fetch(state.settings.endpoint, {
         method: "POST",
         mode: "cors",
-        headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        headers: { "content-type": "text/plain;charset=UTF-8" },
         signal: controller.signal,
-        body: `payload=${encodeURIComponent(JSON.stringify(body))}`
+        body: JSON.stringify(body)
       });
       logDebug("fetch response headers received", {
         elapsedMs: Date.now() - startedAt,
