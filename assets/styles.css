@@ -496,10 +496,14 @@ h3 {
 .record-detail-cell {
   padding: 0 !important;
   background: #fbfcfd;
+  white-space: normal;
 }
 
 .detail-panel {
-  padding: 10px 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  overflow: visible;
 }
 
 .record-kicker {
@@ -530,12 +534,29 @@ h3 {
 }
 
 .field-list--detail {
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: 1fr;
   gap: 1px;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--line);
+}
+
+.field-list--detail .field-row {
+  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.field-list--detail .field-row dd,
+.field-list--detail .field-row dd * {
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.field-list--detail .subtle {
+  white-space: normal;
 }
 
 .field-row {
@@ -575,7 +596,7 @@ h3 {
   font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
-  word-break: normal;
+  word-break: break-word;
 }
 
 .nested-record-list,
@@ -615,6 +636,36 @@ h3 {
 .additional-fields {
   display: grid;
   gap: 10px;
+}
+
+.raw-json-detail {
+  margin-top: 10px;
+}
+
+.raw-json-detail summary {
+  width: fit-content;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.raw-json-detail pre {
+  max-width: 100%;
+  max-height: none;
+  margin: 8px 0 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fff;
+  color: var(--ink);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .boolean-pill {

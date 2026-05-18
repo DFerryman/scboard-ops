@@ -750,6 +750,10 @@
             <dl class="field-list field-list--detail">
               ${allColumns.map(column => renderField(column, doc ? doc[column] : undefined)).join("")}
             </dl>
+            <details class="raw-json-detail">
+              <summary>Raw JSON</summary>
+              <pre>${escapeHtml(formatJson(doc || {}))}</pre>
+            </details>
           </div>
         </td>
       </tr>`;
@@ -1023,6 +1027,14 @@
 
   function safeDomId(value) {
     return String(value || "row").replace(/[^a-z0-9_-]+/gi, "-");
+  }
+
+  function formatJson(value) {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (_) {
+      return String(value);
+    }
   }
 
   function toggleRecordDetail(button) {
