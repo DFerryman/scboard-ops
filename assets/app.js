@@ -3,11 +3,11 @@
 
   const STORAGE_KEY = "scboard.ops.settings";
   const SESSION_TOKEN_KEY = "scboard.ops.token";
-  const DEFAULT_LIMIT = 100;
+  const APP_VERSION = "ops-debug-2026-05-18-1";
+  const DEFAULT_LIMIT = 20;
   const DEFAULT_REFRESH_SECONDS = 60;
   const REQUEST_TIMEOUT_MS = 15000;
   const COLLECTION_ORDER = [
-    "push_log",
     "hn_dashboard_summary",
     "hn_dashboard_ingest_runs",
     "hn_dashboard_cloud_sync_runs"
@@ -73,6 +73,9 @@
     collectionSections: document.getElementById("collectionSections"),
     rawJson: document.getElementById("rawJson")
   };
+  els.debugLog = document.getElementById("debugLog");
+  els.copyLogButton = document.getElementById("copyLogButton");
+  els.clearLogButton = document.getElementById("clearLogButton");
 
   function loadSettings() {
     let saved = {};
@@ -111,7 +114,23 @@
   function init() {
     bindSettings();
     renderEmpty();
+    logDebug("init", {
+      version: APP_VERSION,
+      endpointConfigured: Boolean(state.settings.endpoint),
+      tokenConfigured: Boolean(state.settings.token),
+      limit: state.settings.limit,
+      autoRefreshSeconds: state.settings.refreshInterval
+    });
     els.refreshButton.addEventListener("click", () => refresh());
+    if (els.clearLogButton) {
+      els.clearLogButton.addEventListener("click", () => {
+        if (els.debugLog) els.debugLog.textContent = "";
+        logDebug("debug log cleared");
+      });
+    }
+    if (els.copyLogButton) {
+      els.copyLogButton.addEventListener("click", copyDebugLog);
+    }
     els.settingsForm.addEventListener("submit", event => {
       event.preventDefault();
       state.settings = {
@@ -121,6 +140,12 @@
         refreshInterval: clampInt(els.refreshIntervalInput.value, DEFAULT_REFRESH_SECONDS, 0, 3600)
       };
       saveSettings();
+      logDebug("settings applied", {
+        endpoint: state.settings.endpoint,
+        tokenConfigured: Boolean(state.settings.token),
+        limit: state.settings.limit,
+        autoRefreshSeconds: state.settings.refreshInterval
+      });
       scheduleRefresh();
       refresh();
     });
@@ -139,61 +164,114 @@
     if (state.timer) {
       window.clearInterval(state.timer);
       state.timer = null;
+      logDebug("auto refresh timer cleared");
     }
     if (state.settings.refreshInterval > 0) {
       state.timer = window.setInterval(refresh, state.settings.refreshInterval * 1000);
+      logDebug("auto refresh timer set", { seconds: state.settings.refreshInterval });
     }
   }
 
   async function refresh() {
-    if (state.loading) return;
+    if (state.loading) {
+      logDebug("refresh skipped: previous request still loading");
+      return;
+    }
+    const startedAt = Date.now();
     state.loading = true;
     els.refreshButton.disabled = true;
     els.refreshButton.textContent = "Loading";
     els.headlineMeta.textContent = "Requesting dashboard API...";
     hideAlert();
+    logDebug("refresh start", {
+      endpoint: state.settings.endpoint,
+      tokenConfigured: Boolean(state.settings.token),
+      limit: state.settings.limit
+    });
 
     try {
       if (!state.settings.endpoint) {
         renderEmpty();
         showAlert("Configure the dashboard API endpoint to load live data.");
+        logDebug("refresh stopped: missing endpoint");
         return;
       }
       const snapshot = await fetchDashboard();
+      logDebug("fetch complete", {
+        elapsedMs: Date.now() - startedAt,
+        collections: Array.isArray(snapshot.collections) ? snapshot.collections.length : 0,
+        syncVersion: snapshot.syncVersion
+      });
       els.headlineMeta.textContent = "Rendering dashboard data...";
+      const renderStartedAt = Date.now();
       renderDashboard(snapshot);
+      logDebug("render complete", {
+        elapsedMs: Date.now() - renderStartedAt,
+        totalElapsedMs: Date.now() - startedAt
+      });
     } catch (err) {
       showAlert(err.message || String(err));
+      logDebug("refresh failed", {
+        elapsedMs: Date.now() - startedAt,
+        name: err && err.name,
+        message: err && err.message ? err.message : String(err)
+      }, "error");
     } finally {
       state.loading = false;
       els.refreshButton.disabled = false;
       els.refreshButton.textContent = "Refresh";
+      logDebug("refresh end", { elapsedMs: Date.now() - startedAt });
     }
   }
 
   async function fetchDashboard() {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const startedAt = Date.now();
+    const body = {
+      token: state.settings.token,
+      opsToken: state.settings.token,
+      accessToken: state.settings.token,
+      limit: state.settings.limit,
+      ingestLimit: state.settings.limit,
+      cloudSyncLimit: state.settings.limit
+    };
+    logDebug("fetch request prepared", {
+      endpoint: state.settings.endpoint,
+      method: "POST",
+      contentType: "text/plain;charset=UTF-8",
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      body: redactRequestBody(body)
+    });
 
     try {
+      logDebug("fetch sending");
       const response = await fetch(state.settings.endpoint, {
         method: "POST",
         mode: "cors",
         headers: { "content-type": "text/plain;charset=UTF-8" },
         signal: controller.signal,
-        body: JSON.stringify({
-          token: state.settings.token,
-          opsToken: state.settings.token,
-          accessToken: state.settings.token,
-          limit: state.settings.limit,
-          ingestLimit: state.settings.limit,
-          cloudSyncLimit: state.settings.limit,
-          pushLogLimit: state.settings.limit
-        })
+        body: JSON.stringify(body)
+      });
+      logDebug("fetch response headers received", {
+        elapsedMs: Date.now() - startedAt,
+        status: response.status,
+        ok: response.ok,
+        type: response.type
       });
 
       const text = await response.text();
+      logDebug("fetch response body received", {
+        elapsedMs: Date.now() - startedAt,
+        chars: text.length,
+        preview: text.slice(0, 300)
+      });
       const payload = parseJson(text);
+      logDebug("response JSON parsed", {
+        hasOk: payload && Object.prototype.hasOwnProperty.call(payload, "ok"),
+        hasBodyWrapper: payload && typeof payload.body === "string",
+        hasError: Boolean(payload && payload.error)
+      });
       if (!response.ok) {
         const message = payload && (payload.message || payload.error && payload.error.message || payload.error);
         throw new Error(message || `HTTP ${response.status}`);
@@ -201,8 +279,14 @@
       return normalizePayload(payload);
     } catch (err) {
       if (err && err.name === "AbortError") {
+        logDebug("fetch aborted by timeout", { elapsedMs: Date.now() - startedAt }, "error");
         throw new Error(`Dashboard API timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
       }
+      logDebug("fetch error", {
+        elapsedMs: Date.now() - startedAt,
+        name: err && err.name,
+        message: err && err.message ? err.message : String(err)
+      }, "error");
       throw err;
     } finally {
       window.clearTimeout(timeoutId);
@@ -232,12 +316,14 @@
     try {
       return JSON.parse(text);
     } catch (_) {
+      logDebug("JSON parse failed", { preview: String(text || "").slice(0, 500) }, "error");
       throw new Error("Dashboard API returned non-JSON response");
     }
   }
 
   function normalizePayload(payload) {
     if (payload && typeof payload.body === "string") {
+      logDebug("normalizing CloudBase HTTP body wrapper");
       payload = parseJson(payload.body);
     }
     if (payload && payload.error) {
@@ -252,11 +338,18 @@
     normalized.ingestRuns = Array.isArray(payload.ingestRuns) ? payload.ingestRuns : [];
     normalized.cloudSyncRuns = Array.isArray(payload.cloudSyncRuns) ? payload.cloudSyncRuns : [];
     normalized.asOf = payload.asOf || Math.floor(Date.now() / 1000);
+    logDebug("payload normalized", {
+      collections: normalized.collections.length,
+      ingestRuns: normalized.ingestRuns.length,
+      cloudSyncRuns: normalized.cloudSyncRuns.length,
+      asOf: normalized.asOf
+    });
     return normalized;
   }
 
   function normalizeCollections(payload) {
     if (Array.isArray(payload.collections)) {
+      logDebug("using payload.collections", { count: payload.collections.length });
       return payload.collections.map(item => ({
         name: item.name,
         count: Number.isInteger(item.count) ? item.count : (Array.isArray(item.docs) ? item.docs.length : 0),
@@ -268,6 +361,7 @@
     }
 
     const summaryDocs = payload.summary ? [payload.summary] : [];
+    logDebug("payload.collections missing; derived collections from legacy fields");
     return [
       { name: "hn_dashboard_summary", count: summaryDocs.length, docs: summaryDocs, query: { _id: "summary" } },
       {
@@ -521,6 +615,7 @@
   function showAlert(message) {
     els.alert.textContent = message;
     els.alert.hidden = false;
+    logDebug("alert shown", { message });
   }
 
   function hideAlert() {
@@ -535,6 +630,47 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  function redactRequestBody(body) {
+    return Object.assign({}, body, {
+      token: body.token ? "(configured)" : "",
+      opsToken: body.opsToken ? "(configured)" : "",
+      accessToken: body.accessToken ? "(configured)" : ""
+    });
+  }
+
+  function logDebug(message, data, level) {
+    const line = `[${new Date().toLocaleTimeString()}] ${message}` +
+      (data === undefined ? "" : ` ${safeStringify(data)}`);
+    if (els.debugLog) {
+      els.debugLog.textContent += `${line}\n`;
+      els.debugLog.scrollTop = els.debugLog.scrollHeight;
+    }
+    const method = level === "error" ? "error" : "log";
+    try {
+      console[method]("[scboard-ops]", message, data || "");
+    } catch (_) {}
+  }
+
+  function safeStringify(value) {
+    try {
+      return JSON.stringify(value);
+    } catch (err) {
+      return String(value);
+    }
+  }
+
+  function copyDebugLog() {
+    const text = els.debugLog ? els.debugLog.textContent : "";
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => logDebug("debug log copied"))
+        .catch(err => logDebug("copy failed", { message: err && err.message }, "error"));
+      return;
+    }
+    logDebug("clipboard API unavailable; select and copy the log manually");
   }
 
   document.addEventListener("toggle", event => {
