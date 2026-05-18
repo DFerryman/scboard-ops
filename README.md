@@ -64,12 +64,13 @@ current no-build static app.
 Use the reference function in `backend/readDashboardHttp/` as the Web-facing
 dashboard API. It follows the existing Mini Program cloud-function style:
 
-- reads recent `push_log` documents;
-- reads `hn_dashboard_summary/summary`;
-- reads recent `hn_dashboard_ingest_runs` documents;
-- reads recent `hn_dashboard_cloud_sync_runs` documents;
+- reads `hn_dashboard_summary/summary` for the initial lightweight overview;
+- lazily reads recent `push_log` documents only when that collection is opened;
+- lazily reads recent `hn_dashboard_ingest_runs` documents only when opened;
+- lazily reads recent `hn_dashboard_cloud_sync_runs` documents only when opened;
 - enforces `OPS_DASHBOARD_TOKEN`;
-- returns one JSON snapshot with a `collections[]` array for the Web UI.
+- returns collection placeholders first, then loaded collection rows via
+  `action: "readCollection"`.
 
 This is intentionally separate from the Mini Program `readDashboard` OPENID
 allowlist, because a normal Web browser request does not have a Mini Program

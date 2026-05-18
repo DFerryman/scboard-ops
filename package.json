@@ -6,6 +6,6 @@
   "scripts": {
     "deploy": "npx wrangler deploy",
     "preview": "npx wrangler dev",
-    "check": "node --check assets/app.js && node --check backend/readDashboardHttp/index.js"
+    "check": "node --check assets/app.js && node --check backend/readDashboardHttp/index.js && node backend/readDashboardHttp/__tests__/read_dashboard_http.test.js"
   }
 }

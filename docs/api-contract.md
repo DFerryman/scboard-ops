@@ -1,7 +1,9 @@
 # Dashboard API Contract
 
-The Web panel expects a protected HTTP endpoint. It should read CloudBase
-ops collections on the server side and return one snapshot.
+The Web panel expects a protected HTTP endpoint. The default request should read
+only the dashboard summary and return a lightweight overview. Collection rows
+are loaded lazily with `action: "readCollection"` so the panel does not spend
+CloudBase reads or response bandwidth on tables the operator never opens.
 
 The endpoint must not read business collections such as `stories`, `topics`,
 `digests`, or `meta`. Counts with those names may appear inside ops documents
@@ -13,6 +15,23 @@ function as a normal HTTP endpoint, then the static Web panel calls it with
 `fetch`.
 
 ## Request
+
+Fast HTTP reachability probe. This does not require token auth and must not read
+database collections:
+
+```http
+GET /api/dashboard?versionProbe=1
+```
+
+Authenticated token probe. This verifies HTTP body parsing and token auth but
+must not read database collections:
+
+```json
+{
+  "debugPing": true,
+  "token": "<ops-token>"
+}
+```
 
 ```http
 POST /api/dashboard
@@ -27,6 +46,20 @@ authorization: Bearer <ops-token>
 }
 ```
 
+Lazy-load one collection after the operator opens it:
+
+```json
+{
+  "action": "readCollection",
+  "collection": "push_log",
+  "limit": 100,
+  "token": "<ops-token>"
+}
+```
+
+Allowed collection names are `push_log`, `hn_dashboard_summary`,
+`hn_dashboard_ingest_runs`, and `hn_dashboard_cloud_sync_runs`.
+
 `x-ops-token: <ops-token>` is also accepted by the reference backend.
 
 ## Response
@@ -34,6 +67,7 @@ authorization: Bearer <ops-token>
 ```json
 {
   "ok": true,
+  "mode": "overview",
   "syncVersion": 42,
   "summary": {
     "_id": "summary",
@@ -49,7 +83,8 @@ authorization: Bearer <ops-token>
   "collections": [
     {
       "name": "push_log",
-      "count": 1,
+      "count": null,
+      "loaded": false,
       "query": "latest documents",
       "limit": 100,
       "sort": "ts desc",
@@ -57,24 +92,57 @@ authorization: Bearer <ops-token>
     },
     {
       "name": "hn_dashboard_summary",
-      "count": 1,
+      "count": null,
+      "loaded": false,
       "query": {"_id": "summary"},
       "docs": []
     },
     {
       "name": "hn_dashboard_ingest_runs",
-      "count": 1,
-      "query": "latest documents",
+      "count": null,
+      "loaded": false,
+      "query": {"syncVersion": 42},
       "limit": 100,
       "sort": "started_at desc",
       "docs": []
     },
     {
       "name": "hn_dashboard_cloud_sync_runs",
-      "count": 1,
-      "query": "latest documents",
+      "count": null,
+      "loaded": false,
+      "query": {"syncVersion": 42},
       "limit": 100,
       "sort": "started_at desc",
+      "docs": []
+    }
+  ],
+  "asOf": 1779070100
+}
+```
+
+`readCollection` responses return one loaded collection:
+
+```json
+{
+  "ok": true,
+  "action": "readCollection",
+  "collection": {
+    "name": "push_log",
+    "count": 1,
+    "loaded": true,
+    "query": "latest documents",
+    "limit": 100,
+    "sort": "ts desc",
+    "docs": []
+  },
+  "collections": [
+    {
+      "name": "push_log",
+      "count": 1,
+      "loaded": true,
+      "query": "latest documents",
+      "limit": 100,
+      "sort": "ts desc",
       "docs": []
     }
   ],
@@ -98,12 +166,15 @@ functions:
 
 The backend should keep this ops-only query flow:
 
-1. Read latest `push_log` documents, sorted by `ts` descending.
-2. Read `hn_dashboard_summary` document `summary`.
-3. Read latest `hn_dashboard_ingest_runs` documents, sorted by `started_at` descending.
-4. Read latest `hn_dashboard_cloud_sync_runs` documents, sorted by `started_at` descending.
-5. Also return `ingestRuns` and `cloudSyncRuns` filtered to `summary.syncVersion`
-   for backward compatibility.
+1. Default overview request reads only `hn_dashboard_summary/summary`.
+2. `readCollection` for `push_log` reads latest `push_log` documents, sorted by
+   `ts` descending.
+3. `readCollection` for `hn_dashboard_summary` reads document `summary`.
+4. `readCollection` for `hn_dashboard_ingest_runs` reads documents for the
+   requested or current `syncVersion`, sorted by
+   `started_at` descending.
+5. `readCollection` for `hn_dashboard_cloud_sync_runs` reads documents for the
+   requested or current `syncVersion`, sorted by `started_at` descending.
 6. Strip system fields such as `_openid`.
 
 This mirrors the Mini Program `readDashboard` function while replacing OPENID
