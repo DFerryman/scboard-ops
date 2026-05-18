@@ -35,7 +35,7 @@
               </label>
               <label>
                 Rows
-                <input id="limitInput" name="limit" type="number" min="1" max="100" value="100">
+                <input id="limitInput" name="limit" type="number" min="1" max="100" value="20">
               </label>
               <label>
                 Auto refresh
@@ -61,6 +61,20 @@
             </section>
 
             <section id="collectionSections" class="collections"></section>
+
+            <section class="panel debug-panel">
+              <div class="panel__header panel__header--compact">
+                <div>
+                  <p class="section-label">Debug</p>
+                  <h3>Request log</h3>
+                </div>
+                <div class="debug-actions">
+                  <button id="copyLogButton" class="button" type="button">Copy</button>
+                  <button id="clearLogButton" class="button" type="button">Clear</button>
+                </div>
+              </div>
+              <pre id="debugLog" class="debug-log"></pre>
+            </section>
 
             <section class="panel">
               <details class="raw-details">
