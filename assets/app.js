@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "scboard.ops.settings";
   const SESSION_TOKEN_KEY = "scboard.ops.token";
-  const APP_VERSION = "ops-debug-2026-05-18-5";
+  const APP_VERSION = "ops-debug-2026-05-18-6";
   const DEFAULT_LIMIT = 20;
   const DEFAULT_REFRESH_SECONDS = 60;
   const REQUEST_TIMEOUT_MS = 15000;
@@ -254,7 +254,7 @@
         logDebug("test api stopped: missing endpoint");
         return;
       }
-      const version = await fetchVersionProbe();
+      const version = await fetchDashboard({ versionProbe: true, limit: 1, ingestLimit: 1, cloudSyncLimit: 1 });
       logDebug("version probe success", {
         elapsedMs: Date.now() - startedAt,
         version: version && version.version,
