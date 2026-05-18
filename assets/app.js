@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "scboard.ops.settings";
   const SESSION_TOKEN_KEY = "scboard.ops.token";
-  const APP_VERSION = "ops-debug-2026-05-18-2";
+  const APP_VERSION = "ops-debug-2026-05-18-3";
   const DEFAULT_LIMIT = 20;
   const DEFAULT_REFRESH_SECONDS = 60;
   const REQUEST_TIMEOUT_MS = 15000;
@@ -254,11 +254,18 @@
         logDebug("test api stopped: missing endpoint");
         return;
       }
+      const version = await fetchVersionProbe();
+      logDebug("version probe success", {
+        elapsedMs: Date.now() - startedAt,
+        version: version && version.version,
+        asOf: version && version.asOf
+      });
       const payload = await fetchDashboard({ debugPing: true, limit: 1, ingestLimit: 1, cloudSyncLimit: 1 });
       logDebug("test api success", {
         elapsedMs: Date.now() - startedAt,
         pong: payload && payload.pong,
         debugPing: payload && payload.debugPing,
+        version: payload && payload.version,
         asOf: payload && payload.asOf
       });
       showAlert("Test API succeeded. HTTP access and token auth are working.");
@@ -272,6 +279,46 @@
     } finally {
       state.loading = false;
       if (els.testApiButton) els.testApiButton.disabled = false;
+    }
+  }
+
+  async function fetchVersionProbe() {
+    const url = appendQuery(state.settings.endpoint, "versionProbe=1");
+    logDebug("version probe request", { url, method: "GET", timeoutMs: REQUEST_TIMEOUT_MS });
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const startedAt = Date.now();
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        mode: "cors",
+        signal: controller.signal
+      });
+      logDebug("version probe response headers", {
+        elapsedMs: Date.now() - startedAt,
+        status: response.status,
+        ok: response.ok,
+        type: response.type
+      });
+      const text = await response.text();
+      logDebug("version probe response body", {
+        elapsedMs: Date.now() - startedAt,
+        chars: text.length,
+        preview: text.slice(0, 300)
+      });
+      const payload = parseJson(text);
+      if (!response.ok) {
+        const message = payload && (payload.message || payload.error && payload.error.message || payload.error);
+        throw new Error(message || `HTTP ${response.status}`);
+      }
+      return normalizePayload(payload);
+    } catch (err) {
+      if (err && err.name === "AbortError") {
+        throw new Error(`Version probe timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+      }
+      throw err;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
@@ -370,6 +417,10 @@
       logDebug("JSON parse failed", { preview: String(text || "").slice(0, 500) }, "error");
       throw new Error("Dashboard API returned non-JSON response");
     }
+  }
+
+  function appendQuery(url, query) {
+    return `${url}${url.indexOf("?") === -1 ? "?" : "&"}${query}`;
   }
 
   function normalizePayload(payload) {
