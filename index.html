@@ -60,6 +60,58 @@
               <dl id="metricStrip" class="metric-strip"></dl>
             </section>
 
+            <section class="details-grid">
+              <div class="panel">
+                <div class="panel__header panel__header--compact">
+                  <div>
+                    <p class="section-label">Summary</p>
+                    <h3>Document fields</h3>
+                  </div>
+                </div>
+                <dl id="summaryFields" class="kv-list"></dl>
+              </div>
+
+              <div class="panel">
+                <div class="panel__header panel__header--compact">
+                  <div>
+                    <p class="section-label">Metrics</p>
+                    <h3>Pipeline metrics</h3>
+                  </div>
+                </div>
+                <dl id="metricsFields" class="kv-list"></dl>
+              </div>
+
+              <div class="panel">
+                <div class="panel__header panel__header--compact">
+                  <div>
+                    <p class="section-label">Latest ingest</p>
+                    <h3>Latest run fields</h3>
+                  </div>
+                </div>
+                <dl id="latestRunFields" class="kv-list"></dl>
+              </div>
+
+              <div class="panel">
+                <div class="panel__header panel__header--compact">
+                  <div>
+                    <p class="section-label">Latest push</p>
+                    <h3>Latest cloud sync fields</h3>
+                  </div>
+                </div>
+                <dl id="latestCloudSyncFields" class="kv-list"></dl>
+              </div>
+
+              <div class="panel panel--wide">
+                <div class="panel__header panel__header--compact">
+                  <div>
+                    <p class="section-label">AI</p>
+                    <h3>Provider and probe fields</h3>
+                  </div>
+                </div>
+                <dl id="aiFields" class="kv-list kv-list--wide"></dl>
+              </div>
+            </section>
+
             <section class="split">
               <div class="panel">
                 <div class="panel__header">
@@ -73,10 +125,12 @@
                     <thead>
                       <tr>
                         <th>Status</th>
-                        <th>Started</th>
+                        <th>Run</th>
+                        <th>Times</th>
                         <th>Phase</th>
-                        <th>Progress</th>
+                        <th>Counts</th>
                         <th>AI usage</th>
+                        <th>Error / raw</th>
                       </tr>
                     </thead>
                     <tbody id="ingestRows"></tbody>
@@ -96,16 +150,25 @@
                     <thead>
                       <tr>
                         <th>Status</th>
-                        <th>Started</th>
+                        <th>Run</th>
+                        <th>Times</th>
                         <th>Version</th>
                         <th>Payload</th>
                         <th>Elapsed</th>
+                        <th>Error</th>
                       </tr>
                     </thead>
                     <tbody id="cloudRows"></tbody>
                   </table>
                 </div>
               </div>
+            </section>
+
+            <section class="panel">
+              <details class="raw-details">
+                <summary>Raw dashboard JSON</summary>
+                <pre id="rawJson" class="json-block">{}</pre>
+              </details>
             </section>
           </section>
         </section>
