@@ -1,0 +1,9 @@
+{
+  "name": "scboard-ops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Static Web ops panel for SCBoard CloudBase dashboard data.",
+  "scripts": {
+    "check": "node --check assets/app.js && node --check backend/readDashboardHttp/index.js"
+  }
+}

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SCBoard Ops</title>
+    <link rel="stylesheet" href="assets/styles.css">
+  </head>
+  <body>
+    <div id="app" class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">SCBoard Ops</p>
+          <h1>Cloud sync dashboard</h1>
+        </div>
+        <div class="topbar__actions">
+          <span id="freshness" class="freshness">No data</span>
+          <button id="refreshButton" class="button button--primary" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <main>
+        <section id="alert" class="alert" hidden></section>
+
+        <section class="workspace">
+          <aside class="sidebar" aria-label="Dashboard settings">
+            <form id="settingsForm" class="settings">
+              <label>
+                API endpoint
+                <input id="endpointInput" name="endpoint" type="url" placeholder="https://.../api/dashboard" autocomplete="off">
+              </label>
+              <label>
+                Access token
+                <input id="tokenInput" name="token" type="password" placeholder="Required by API" autocomplete="current-password">
+              </label>
+              <label>
+                Rows
+                <input id="limitInput" name="limit" type="number" min="1" max="100" value="20">
+              </label>
+              <label>
+                Auto refresh
+                <select id="refreshIntervalInput" name="refreshInterval">
+                  <option value="0">Off</option>
+                  <option value="30">30s</option>
+                  <option value="60" selected>60s</option>
+                  <option value="300">5m</option>
+                </select>
+              </label>
+              <button class="button" type="submit">Apply</button>
+            </form>
+          </aside>
+
+          <section class="content" aria-live="polite">
+            <section class="summary">
+              <div class="summary__main">
+                <p class="section-label">Current state</p>
+                <h2 id="headlineStatus">Waiting for data</h2>
+                <p id="headlineMeta" class="muted">Connect a dashboard API or review sample data.</p>
+              </div>
+              <dl id="metricStrip" class="metric-strip"></dl>
+            </section>
+
+            <section class="split">
+              <div class="panel">
+                <div class="panel__header">
+                  <div>
+                    <p class="section-label">Ingest</p>
+                    <h3>Recent runs</h3>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>Started</th>
+                        <th>Phase</th>
+                        <th>Progress</th>
+                        <th>AI usage</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ingestRows"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel__header">
+                  <div>
+                    <p class="section-label">Cloud push</p>
+                    <h3>Recent syncs</h3>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>Started</th>
+                        <th>Version</th>
+                        <th>Payload</th>
+                        <th>Elapsed</th>
+                      </tr>
+                    </thead>
+                    <tbody id="cloudRows"></tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/app.js"></script>
+  </body>
+</html>
