@@ -1,0 +1,5 @@
+# Cloudflare Workers static assets should expose only the browser app.
+*
+!index.html
+!assets/
+!assets/**

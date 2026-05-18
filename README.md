@@ -41,6 +41,24 @@ panel shows an empty state. It does not render mock data.
 For live data, enter the protected dashboard API URL and token in the Settings
 panel. The endpoint must implement the contract in `docs/api-contract.md`.
 
+## Cloudflare Workers Deployment
+
+Deploy the static panel with Wrangler:
+
+```sh
+npx wrangler deploy
+```
+
+The committed `wrangler.jsonc` is the source of truth for Cloudflare Workers.
+It uses Workers Static Assets with the repository root as the asset directory,
+and `.assetsignore` allowlists only `index.html` and `assets/**`. This prevents
+Wrangler's install-time `node_modules/`, backend source files, docs, and project
+metadata from being uploaded as public static assets.
+
+For the Cloudflare dashboard build settings, use `npx wrangler deploy` as the
+deploy command. No build command or output directory setting is required for the
+current no-build static app.
+
 ## Recommended Backend
 
 Use the reference function in `backend/readDashboardHttp/` as the Web-facing

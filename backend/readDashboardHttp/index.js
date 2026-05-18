@@ -110,6 +110,7 @@ async function getRuns(collection, syncVersion, limit) {
   try {
     const res = await db.collection(collection)
       .where({ syncVersion })
+      .orderBy('started_at', 'desc')
       .limit(MAX_LIMIT)
       .get()
 
@@ -123,15 +124,17 @@ async function getRuns(collection, syncVersion, limit) {
   }
 }
 
-async function getCollectionDocs(collection, limit, sortFn) {
+async function getCollectionDocs(collection, limit, order, sortFn) {
   try {
-    const res = await db.collection(collection)
-      .limit(MAX_LIMIT)
-      .get()
+    let query = db.collection(collection)
+    if (order && order.field && order.direction) {
+      query = query.orderBy(order.field, order.direction)
+    }
+    const res = await query.limit(limit).get()
 
     const docs = ((res && res.data) || []).map(stripSystemFields)
     if (typeof sortFn === 'function') docs.sort(sortFn)
-    return docs.slice(0, limit)
+    return docs
   } catch (e) {
     if (isNotFoundError(e)) return []
     throw e
@@ -183,9 +186,9 @@ exports.main = async (event) => {
     const [currentIngestRuns, currentCloudSyncRuns, ingestDocs, cloudSyncDocs, pushLogDocs] = await Promise.all([
       getRuns('hn_dashboard_ingest_runs', syncVersion, ingestLimit),
       getRuns('hn_dashboard_cloud_sync_runs', syncVersion, cloudSyncLimit),
-      getCollectionDocs('hn_dashboard_ingest_runs', ingestLimit, byStartedAtDesc),
-      getCollectionDocs('hn_dashboard_cloud_sync_runs', cloudSyncLimit, byStartedAtDesc),
-      getCollectionDocs('push_log', pushLogLimit, byTsDesc)
+      getCollectionDocs('hn_dashboard_ingest_runs', ingestLimit, { field: 'started_at', direction: 'desc' }, byStartedAtDesc),
+      getCollectionDocs('hn_dashboard_cloud_sync_runs', cloudSyncLimit, { field: 'started_at', direction: 'desc' }, byStartedAtDesc),
+      getCollectionDocs('push_log', pushLogLimit, { field: 'ts', direction: 'desc' }, byTsDesc)
     ])
     const collections = [
       collectionSnapshot(

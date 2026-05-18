@@ -4,6 +4,8 @@
   "private": true,
   "description": "Static Web ops panel for SCBoard CloudBase dashboard data.",
   "scripts": {
+    "deploy": "npx wrangler deploy",
+    "preview": "npx wrangler dev",
     "check": "node --check assets/app.js && node --check backend/readDashboardHttp/index.js"
   }
 }
