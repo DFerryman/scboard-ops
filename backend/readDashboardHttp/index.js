@@ -55,14 +55,16 @@ function bearerToken(value) {
   return match ? match[1].trim() : ''
 }
 
-function authorize(event) {
+function authorize(event, payload) {
   const expected = process.env.OPS_DASHBOARD_TOKEN || ''
   if (!expected) {
     return { ok: false, statusCode: 500, message: 'OPS_DASHBOARD_TOKEN is not configured' }
   }
 
   const headers = event && event.headers ? event.headers : {}
-  const actual = bearerToken(getHeader(headers, 'authorization')) || getHeader(headers, 'x-ops-token')
+  const actual = bearerToken(getHeader(headers, 'authorization')) ||
+    getHeader(headers, 'x-ops-token') ||
+    (payload && (payload.token || payload.opsToken || payload.accessToken))
   if (!actual || actual !== expected) {
     return { ok: false, statusCode: 401, message: 'dashboard access denied' }
   }
@@ -166,13 +168,13 @@ exports.main = async (event) => {
     return http(405, { error: { code: 'METHOD_NOT_ALLOWED', message: 'use POST' } })
   }
 
-  const auth = authorize(event)
-  if (!auth.ok) {
-    return http(auth.statusCode, { error: { code: 'FORBIDDEN', message: auth.message } })
-  }
-
   try {
     const body = parseBody(event)
+    const auth = authorize(event, body)
+    if (!auth.ok) {
+      return http(auth.statusCode, { error: { code: 'FORBIDDEN', message: auth.message } })
+    }
+
     const defaultLimit = clampLimit(body.limit, DEFAULT_LIMIT)
     const ingestLimit = clampLimit(body.ingestLimit, defaultLimit)
     const cloudSyncLimit = clampLimit(body.cloudSyncLimit, defaultLimit)

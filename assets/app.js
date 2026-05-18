@@ -5,6 +5,7 @@
   const SESSION_TOKEN_KEY = "scboard.ops.token";
   const DEFAULT_LIMIT = 100;
   const DEFAULT_REFRESH_SECONDS = 60;
+  const REQUEST_TIMEOUT_MS = 15000;
   const COLLECTION_ORDER = [
     "push_log",
     "hn_dashboard_summary",
@@ -52,7 +53,9 @@
   const state = {
     loading: false,
     timer: null,
-    settings: loadSettings()
+    settings: loadSettings(),
+    jsonStore: new Map(),
+    jsonSeq: 0
   };
 
   const els = {
@@ -147,6 +150,7 @@
     state.loading = true;
     els.refreshButton.disabled = true;
     els.refreshButton.textContent = "Loading";
+    els.headlineMeta.textContent = "Requesting dashboard API...";
     hideAlert();
 
     try {
@@ -156,6 +160,7 @@
         return;
       }
       const snapshot = await fetchDashboard();
+      els.headlineMeta.textContent = "Rendering dashboard data...";
       renderDashboard(snapshot);
     } catch (err) {
       showAlert(err.message || String(err));
@@ -167,32 +172,60 @@
   }
 
   async function fetchDashboard() {
-    const headers = { "content-type": "application/json" };
-    if (state.settings.token) {
-      headers.authorization = `Bearer ${state.settings.token}`;
-      headers["x-ops-token"] = state.settings.token;
-    }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-    const response = await fetch(state.settings.endpoint, {
-      method: "POST",
-      mode: "cors",
-      headers,
-      body: JSON.stringify({
-        limit: state.settings.limit,
-        ingestLimit: state.settings.limit,
-        cloudSyncLimit: state.settings.limit,
-        pushLogLimit: state.settings.limit
-      })
-    });
+    try {
+      const response = await fetch(state.settings.endpoint, {
+        method: "POST",
+        mode: "cors",
+        headers: { "content-type": "text/plain;charset=UTF-8" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          token: state.settings.token,
+          opsToken: state.settings.token,
+          accessToken: state.settings.token,
+          limit: state.settings.limit,
+          ingestLimit: state.settings.limit,
+          cloudSyncLimit: state.settings.limit,
+          pushLogLimit: state.settings.limit
+        })
+      });
 
-    const text = await response.text();
-    const payload = parseJson(text);
-    if (!response.ok) {
-      const message = payload && (payload.message || payload.error && payload.error.message || payload.error);
-      throw new Error(message || `HTTP ${response.status}`);
+      const text = await response.text();
+      const payload = parseJson(text);
+      if (!response.ok) {
+        const message = payload && (payload.message || payload.error && payload.error.message || payload.error);
+        throw new Error(message || `HTTP ${response.status}`);
+      }
+      return normalizePayload(payload);
+    } catch (err) {
+      if (err && err.name === "AbortError") {
+        throw new Error(`Dashboard API timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+      }
+      throw err;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
-    return normalizePayload(payload);
   }
+
+  function requestBodyForDebug() {
+    return {
+      token: state.settings.token ? "(configured)" : "",
+      opsToken: state.settings.token ? "(configured)" : "",
+      accessToken: state.settings.token ? "(configured)" : "",
+      limit: state.settings.limit,
+      ingestLimit: state.settings.limit,
+      cloudSyncLimit: state.settings.limit,
+      pushLogLimit: state.settings.limit
+    };
+  }
+
+  /*
+   * Kept separate from fetchDashboard so operators can inspect what is sent
+   * without exposing the actual token in the page.
+   */
+  void requestBodyForDebug;
 
   function parseJson(text) {
     if (!text) return {};
@@ -272,6 +305,8 @@
   }
 
   function renderDashboard(snapshot) {
+    state.jsonStore.clear();
+    state.jsonSeq = 0;
     const summary = snapshot.summary || {};
     const metrics = summary.metrics || {};
     const latestRun = summary.latestRun || {};
@@ -301,7 +336,8 @@
     ]);
 
     els.collectionSections.innerHTML = collections.map(renderCollection).join("");
-    els.rawJson.textContent = JSON.stringify(snapshot, null, 2);
+    els.rawJson.textContent = "Open this section to render the full response JSON.";
+    els.rawJson.dataset.jsonId = storeJson(snapshot);
     els.freshness.textContent = `As of ${formatTime(snapshot.asOf)}`;
   }
 
@@ -399,11 +435,25 @@
   }
 
   function rawDetails(value, label) {
+    const id = storeJson(value);
     return `
-      <details class="row-details">
+      <details class="row-details js-json" data-json-id="${escapeHtml(id)}">
         <summary>${escapeHtml(label || "json")}</summary>
-        <pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>
+        <pre>Open to render JSON.</pre>
       </details>`;
+  }
+
+  function storeJson(value) {
+    const id = `json-${state.jsonSeq++}`;
+    state.jsonStore.set(id, value);
+    return id;
+  }
+
+  function renderStoredJson(pre, id) {
+    if (!pre || !id || pre.dataset.rendered === "1") return;
+    const value = state.jsonStore.get(id);
+    pre.textContent = JSON.stringify(value, null, 2);
+    pre.dataset.rendered = "1";
   }
 
   function statusBadge(status) {
@@ -486,6 +536,19 @@
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
+
+  document.addEventListener("toggle", event => {
+    const details = event.target;
+    if (!details || !details.open) return;
+    if (details.classList && details.classList.contains("js-json")) {
+      renderStoredJson(details.querySelector("pre"), details.dataset.jsonId);
+      return;
+    }
+    const rawJson = details.querySelector && details.querySelector("#rawJson");
+    if (rawJson) {
+      renderStoredJson(rawJson, rawJson.dataset.jsonId);
+    }
+  }, true);
 
   init();
 }());
