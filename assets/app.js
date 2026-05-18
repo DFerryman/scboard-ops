@@ -3,8 +3,46 @@
 
   const STORAGE_KEY = "scboard.ops.settings";
   const SESSION_TOKEN_KEY = "scboard.ops.token";
-  const DEFAULT_LIMIT = 20;
+  const DEFAULT_LIMIT = 100;
   const DEFAULT_REFRESH_SECONDS = 60;
+  const COLLECTION_ORDER = [
+    "push_log",
+    "hn_dashboard_summary",
+    "hn_dashboard_ingest_runs",
+    "hn_dashboard_cloud_sync_runs"
+  ];
+  const PREFERRED_COLUMNS = [
+    "_id",
+    "status",
+    "ok",
+    "action",
+    "statusCode",
+    "run_id",
+    "syncVersion",
+    "sync_version",
+    "started_at",
+    "ts",
+    "publishedAt",
+    "finished_at",
+    "deadline_at",
+    "phase",
+    "raw_status",
+    "stale",
+    "overdue_seconds",
+    "stories",
+    "topics",
+    "digests",
+    "elapsed_seconds",
+    "durationMs",
+    "has_error",
+    "signatureOk",
+    "error",
+    "counts",
+    "metrics",
+    "latestRun",
+    "latestCloudSync",
+    "ai"
+  ];
 
   const config = Object.assign({
     dashboardEndpoint: "",
@@ -14,8 +52,7 @@
   const state = {
     loading: false,
     timer: null,
-    settings: loadSettings(),
-    data: null
+    settings: loadSettings()
   };
 
   const els = {
@@ -30,13 +67,7 @@
     headlineStatus: document.getElementById("headlineStatus"),
     headlineMeta: document.getElementById("headlineMeta"),
     metricStrip: document.getElementById("metricStrip"),
-    summaryFields: document.getElementById("summaryFields"),
-    metricsFields: document.getElementById("metricsFields"),
-    latestRunFields: document.getElementById("latestRunFields"),
-    latestCloudSyncFields: document.getElementById("latestCloudSyncFields"),
-    aiFields: document.getElementById("aiFields"),
-    ingestRows: document.getElementById("ingestRows"),
-    cloudRows: document.getElementById("cloudRows"),
+    collectionSections: document.getElementById("collectionSections"),
     rawJson: document.getElementById("rawJson")
   };
 
@@ -76,7 +107,7 @@
 
   function init() {
     bindSettings();
-    renderShell();
+    renderEmpty();
     els.refreshButton.addEventListener("click", () => refresh());
     els.settingsForm.addEventListener("submit", event => {
       event.preventDefault();
@@ -120,13 +151,12 @@
 
     try {
       if (!state.settings.endpoint) {
-        state.data = null;
-        renderShell();
+        renderEmpty();
         showAlert("Configure the dashboard API endpoint to load live data.");
         return;
       }
-      state.data = await fetchDashboard();
-      renderDashboard(state.data);
+      const snapshot = await fetchDashboard();
+      renderDashboard(snapshot);
     } catch (err) {
       showAlert(err.message || String(err));
     } finally {
@@ -137,9 +167,7 @@
   }
 
   async function fetchDashboard() {
-    const headers = {
-      "content-type": "application/json"
-    };
+    const headers = { "content-type": "application/json" };
     if (state.settings.token) {
       headers.authorization = `Bearer ${state.settings.token}`;
       headers["x-ops-token"] = state.settings.token;
@@ -149,7 +177,12 @@
       method: "POST",
       mode: "cors",
       headers,
-      body: JSON.stringify({ limit: state.settings.limit })
+      body: JSON.stringify({
+        limit: state.settings.limit,
+        ingestLimit: state.settings.limit,
+        cloudSyncLimit: state.settings.limit,
+        pushLogLimit: state.settings.limit
+      })
     });
 
     const text = await response.text();
@@ -181,35 +214,70 @@
     if (!payload || payload.ok !== true) {
       throw new Error("Dashboard API returned an invalid envelope");
     }
-    return {
-      ok: true,
-      syncVersion: payload.syncVersion,
-      summary: payload.summary || null,
-      ingestRuns: Array.isArray(payload.ingestRuns) ? payload.ingestRuns : [],
-      cloudSyncRuns: Array.isArray(payload.cloudSyncRuns) ? payload.cloudSyncRuns : [],
-      asOf: payload.asOf || Math.floor(Date.now() / 1000)
-    };
+    const normalized = Object.assign({}, payload);
+    normalized.collections = normalizeCollections(payload);
+    normalized.ingestRuns = Array.isArray(payload.ingestRuns) ? payload.ingestRuns : [];
+    normalized.cloudSyncRuns = Array.isArray(payload.cloudSyncRuns) ? payload.cloudSyncRuns : [];
+    normalized.asOf = payload.asOf || Math.floor(Date.now() / 1000);
+    return normalized;
   }
 
-  function renderShell() {
+  function normalizeCollections(payload) {
+    if (Array.isArray(payload.collections)) {
+      return payload.collections.map(item => ({
+        name: item.name,
+        count: Number.isInteger(item.count) ? item.count : (Array.isArray(item.docs) ? item.docs.length : 0),
+        docs: Array.isArray(item.docs) ? item.docs : [],
+        query: item.query,
+        limit: item.limit,
+        sort: item.sort
+      }));
+    }
+
+    const summaryDocs = payload.summary ? [payload.summary] : [];
+    return [
+      { name: "hn_dashboard_summary", count: summaryDocs.length, docs: summaryDocs, query: { _id: "summary" } },
+      {
+        name: "hn_dashboard_ingest_runs",
+        count: Array.isArray(payload.ingestRuns) ? payload.ingestRuns.length : 0,
+        docs: Array.isArray(payload.ingestRuns) ? payload.ingestRuns : [],
+        query: { syncVersion: payload.syncVersion }
+      },
+      {
+        name: "hn_dashboard_cloud_sync_runs",
+        count: Array.isArray(payload.cloudSyncRuns) ? payload.cloudSyncRuns.length : 0,
+        docs: Array.isArray(payload.cloudSyncRuns) ? payload.cloudSyncRuns : [],
+        query: { syncVersion: payload.syncVersion }
+      }
+    ];
+  }
+
+  function renderEmpty() {
+    els.headlineStatus.textContent = "Waiting for live data";
+    els.headlineMeta.textContent = "No dashboard API response has been loaded.";
     els.metricStrip.innerHTML = metricItems([
-      ["Pipeline", "Waiting"],
-      ["Cloud sync", "Waiting"],
-      ["Catalog", "-"],
-      ["Failure rate", "-"],
-      ["AI", "-"],
-      ["Stories", "-"]
+      ["Sync version", "-"],
+      ["Published", "-"],
+      ["As of", "-"],
+      ["Collections", "-"],
+      ["Documents", "-"],
+      ["Limit", state.settings.limit]
     ]);
-    renderRows(els.ingestRows, []);
-    renderRows(els.cloudRows, []);
+    els.collectionSections.innerHTML = `
+      <section class="panel empty-panel">
+        Configure the API endpoint and token, then refresh.
+      </section>`;
+    els.rawJson.textContent = "{}";
+    els.freshness.textContent = "No data";
   }
 
-  function renderDashboard(snapshot, sampleMode) {
+  function renderDashboard(snapshot) {
     const summary = snapshot.summary || {};
     const metrics = summary.metrics || {};
     const latestRun = summary.latestRun || {};
     const latestCloudSync = summary.latestCloudSync || {};
-    const ai = summary.ai || {};
+    const collections = orderedCollections(snapshot.collections);
+    const docCount = collections.reduce((sum, collection) => sum + collection.docs.length, 0);
     const pipelineStatus = latestRun.status || "unknown";
     const syncStatus = latestCloudSync.status || "unknown";
 
@@ -217,63 +285,125 @@
     els.headlineMeta.textContent = [
       `sync v${valueOrDash(snapshot.syncVersion || summary.syncVersion)}`,
       `published ${formatTime(summary.publishedAt)}`,
-      sampleMode ? "sample data" : "live data"
-    ].join(" · ");
+      "live data"
+    ].join(" / ");
 
     els.metricStrip.innerHTML = metricItems([
+      ["Sync version", valueOrDash(snapshot.syncVersion || summary.syncVersion)],
       ["Pipeline", labelForStatus(pipelineStatus)],
       ["Cloud sync", labelForStatus(syncStatus)],
+      ["Collections", collections.length],
+      ["Documents", docCount],
+      ["Limit", state.settings.limit],
       ["Catalog", valueOrDash(metrics.catalog_version)],
-      ["Failure rate", formatPercent(metrics.failure_rate)],
-      ["AI", ai.status || "unknown"],
-      ["Stories", valueOrDash(metrics.total_stories)]
+      ["Stories", valueOrDash(metrics.total_stories)],
+      ["Failure rate", formatPercent(metrics.failure_rate)]
     ]);
 
-    renderIngestRows(snapshot.ingestRuns);
-    renderCloudRows(snapshot.cloudSyncRuns);
+    els.collectionSections.innerHTML = collections.map(renderCollection).join("");
+    els.rawJson.textContent = JSON.stringify(snapshot, null, 2);
     els.freshness.textContent = `As of ${formatTime(snapshot.asOf)}`;
+  }
+
+  function orderedCollections(collections) {
+    const list = Array.isArray(collections) ? collections.slice() : [];
+    return list.sort((a, b) => {
+      const ai = COLLECTION_ORDER.indexOf(a.name);
+      const bi = COLLECTION_ORDER.indexOf(b.name);
+      if (ai === -1 && bi === -1) return String(a.name).localeCompare(String(b.name));
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+  }
+
+  function renderCollection(collection) {
+    const docs = Array.isArray(collection.docs) ? collection.docs : [];
+    const columns = collectionColumns(docs);
+    return `
+      <section class="panel collection-panel">
+        <div class="panel__header">
+          <div>
+            <p class="section-label">Collection</p>
+            <h3>${escapeHtml(collection.name || "(unknown)")}</h3>
+          </div>
+          <div class="collection-meta">
+            <span>${docs.length} docs</span>
+            ${collection.limit ? `<span>limit ${escapeHtml(collection.limit)}</span>` : ""}
+            ${collection.sort ? `<span>${escapeHtml(collection.sort)}</span>` : ""}
+          </div>
+        </div>
+        ${collection.query ? `<div class="query-line">query: ${valueHtml(collection.query)}</div>` : ""}
+        ${docs.length ? renderTable(docs, columns) : `<div class="empty-panel">No documents returned.</div>`}
+      </section>`;
+  }
+
+  function collectionColumns(docs) {
+    const keys = new Set();
+    docs.forEach(doc => {
+      if (doc && typeof doc === "object") {
+        Object.keys(doc).forEach(key => keys.add(key));
+      }
+    });
+    const preferred = PREFERRED_COLUMNS.filter(key => keys.has(key));
+    const rest = Array.from(keys)
+      .filter(key => !preferred.includes(key))
+      .sort((a, b) => a.localeCompare(b));
+    return preferred.concat(rest);
+  }
+
+  function renderTable(docs, columns) {
+    return `
+      <div class="table-wrap">
+        <table class="collection-table">
+          <thead>
+            <tr>
+              ${columns.map(column => `<th>${escapeHtml(labelForKey(column))}</th>`).join("")}
+              <th>raw doc</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${docs.map(doc => renderRow(doc, columns)).join("")}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function renderRow(doc, columns) {
+    return `
+      <tr>
+        ${columns.map(column => `<td>${valueHtml(doc ? doc[column] : undefined, column)}</td>`).join("")}
+        <td>${rawDetails(doc, "open")}</td>
+      </tr>`;
   }
 
   function metricItems(items) {
     return items.map(([label, value]) => (
-      `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`
+      `<div><dt>${escapeHtml(label)}</dt><dd>${valueHtml(value)}</dd></div>`
     )).join("");
   }
 
-  function renderRows(target, rows) {
-    if (rows.length) return;
-    target.innerHTML = `<tr><td class="empty-row" colspan="5">No rows</td></tr>`;
+  function valueHtml(value, key) {
+    if (value === null || value === undefined || value === "") return `<span class="muted">-</span>`;
+    if (typeof value === "boolean") return escapeHtml(value ? "true" : "false");
+    if (key && looksLikeTimeKey(key)) {
+      return `${escapeHtml(formatTime(value))}<span class="subtle">${escapeHtml(String(value))}</span>`;
+    }
+    if (key && looksLikeDurationKey(key)) {
+      return escapeHtml(formatSeconds(value));
+    }
+    if (typeof value === "object") {
+      return rawDetails(value, Array.isArray(value) ? `${value.length} items` : "object");
+    }
+    return escapeHtml(String(value));
   }
 
-  function renderIngestRows(rows) {
-    if (!rows.length) {
-      renderRows(els.ingestRows, rows);
-      return;
-    }
-    els.ingestRows.innerHTML = rows.map(row => {
-      const usage = row.ai_usage || {};
-      return `<tr>
-        <td>${statusBadge(row.status)}<span class="subtle">${escapeHtml(row.run_id || "")}</span></td>
-        <td>${escapeHtml(formatTime(row.started_at))}<span class="subtle">${escapeHtml(formatDuration(row.overdue_seconds, "overdue"))}</span></td>
-        <td>${escapeHtml(row.phase || "-")}<span class="subtle">raw ${valueOrDash(row.raw_status)}</span></td>
-        <td>${escapeHtml(progressText(row))}</td>
-        <td>${escapeHtml(formatAiUsage(usage))}</td>
-      </tr>`;
-    }).join("");
-  }
-
-  function renderCloudRows(rows) {
-    if (!rows.length) {
-      renderRows(els.cloudRows, rows);
-      return;
-    }
-    els.cloudRows.innerHTML = rows.map(row => `<tr>
-      <td>${statusBadge(row.status)}<span class="subtle">${escapeHtml(row.error || "")}</span></td>
-      <td>${escapeHtml(formatTime(row.started_at))}<span class="subtle">${escapeHtml(row.run_id || "")}</span></td>
-      <td>${escapeHtml(valueOrDash(row.sync_version || row.syncVersion))}</td>
-      <td>${escapeHtml(payloadText(row))}</td>
-      <td>${escapeHtml(formatSeconds(row.elapsed_seconds))}</td>
-    </tr>`).join("");
+  function rawDetails(value, label) {
+    return `
+      <details class="row-details">
+        <summary>${escapeHtml(label || "json")}</summary>
+        <pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>
+      </details>`;
   }
 
   function statusBadge(status) {
@@ -283,8 +413,8 @@
 
   function statusClass(status) {
     const s = status.toLowerCase();
-    if (["ok", "success", "healthy"].includes(s)) return "status--ok";
-    if (["failed", "error", "stale"].includes(s)) return "status--bad";
+    if (["ok", "success", "healthy", "true"].includes(s)) return "status--ok";
+    if (["failed", "error", "stale", "false"].includes(s)) return "status--bad";
     if (["warning", "deferred"].includes(s)) return "status--warn";
     if (["running", "in_progress"].includes(s)) return "status--info";
     return "status--idle";
@@ -294,6 +424,12 @@
     const text = String(status || "unknown");
     if (text === "ok") return "OK";
     return text.replace(/_/g, " ");
+  }
+
+  function labelForKey(key) {
+    return String(key)
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/_/g, " ");
   }
 
   function valueOrDash(value) {
@@ -324,30 +460,12 @@
     return `${n.toFixed(n < 10 ? 1 : 0)} s`;
   }
 
-  function formatDuration(value, suffix) {
-    const n = Number(value);
-    if (!Number.isFinite(n) || n <= 0) return "";
-    return `${formatSeconds(n)} ${suffix}`;
+  function looksLikeTimeKey(key) {
+    return /(^ts$|_at$|At$|Time$|publishedAt|serverTime)/.test(String(key));
   }
 
-  function progressText(row) {
-    const parts = [
-      `claimed ${valueOrDash(row.claimed)}`,
-      `done ${valueOrDash(row.done)}`,
-      `failed ${valueOrDash(row.failed)}`,
-      `retried ${valueOrDash(row.retried)}`
-    ];
-    return parts.join(" · ");
-  }
-
-  function formatAiUsage(usage) {
-    const tokens = valueOrDash(usage.total_tokens);
-    const cost = usage.cost === null || usage.cost === undefined ? "-" : `$${Number(usage.cost).toFixed(4)}`;
-    return `${tokens} tokens · ${cost}`;
-  }
-
-  function payloadText(row) {
-    return `stories ${valueOrDash(row.stories)} · topics ${valueOrDash(row.topics)} · digests ${valueOrDash(row.digests)}`;
+  function looksLikeDurationKey(key) {
+    return /seconds|duration|elapsed|durationMs/i.test(String(key));
   }
 
   function showAlert(message) {
@@ -367,97 +485,6 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
-  }
-
-  function sampleDashboard() {
-    const now = Math.floor(Date.now() / 1000);
-    return {
-      ok: true,
-      syncVersion: 42,
-      asOf: now,
-      summary: {
-        syncVersion: 42,
-        publishedAt: now - 180,
-        metrics: {
-          catalog_version: 42,
-          failure_rate: 0.018,
-          total_stories: 586
-        },
-        latestRun: {
-          run_id: "run-sample-latest",
-          started_at: now - 960,
-          status: "ok",
-          raw_status: "ok",
-          phase: "finalize",
-          claimed: 90,
-          done: 88,
-          failed: 2,
-          retried: 3,
-          ai_usage: { total_tokens: 183240, cost: 1.9234 }
-        },
-        latestCloudSync: {
-          run_id: "run-sample-latest",
-          started_at: now - 240,
-          status: "ok",
-          sync_version: 42,
-          stories: 586,
-          topics: 18,
-          digests: 4,
-          elapsed_seconds: 8.4
-        },
-        ai: {
-          status: "ok"
-        }
-      },
-      ingestRuns: [
-        {
-          run_id: "run-sample-latest",
-          started_at: now - 960,
-          status: "ok",
-          raw_status: "ok",
-          phase: "finalize",
-          claimed: 90,
-          done: 88,
-          failed: 2,
-          retried: 3,
-          ai_usage: { total_tokens: 183240, cost: 1.9234 }
-        },
-        {
-          run_id: "run-sample-prev",
-          started_at: now - 7320,
-          status: "warning",
-          raw_status: "ok",
-          phase: "enrich",
-          claimed: 90,
-          done: 84,
-          failed: 6,
-          retried: 9,
-          ai_usage: { total_tokens: 170920, cost: 1.7721 }
-        }
-      ],
-      cloudSyncRuns: [
-        {
-          run_id: "run-sample-latest",
-          started_at: now - 240,
-          status: "ok",
-          sync_version: 42,
-          stories: 586,
-          topics: 18,
-          digests: 4,
-          elapsed_seconds: 8.4
-        },
-        {
-          run_id: "run-sample-prev",
-          started_at: now - 6600,
-          status: "deferred",
-          sync_version: 41,
-          stories: 0,
-          topics: 0,
-          digests: 0,
-          elapsed_seconds: 0.2
-        }
-      ]
-    };
   }
 
   init();

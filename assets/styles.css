@@ -215,9 +215,9 @@ h3 {
 
 .metric-strip {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
   gap: 1px;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--line);
@@ -251,6 +251,11 @@ h3 {
   gap: 18px;
 }
 
+.collections {
+  display: grid;
+  gap: 18px;
+}
+
 .panel {
   min-width: 0;
 }
@@ -265,13 +270,18 @@ h3 {
 }
 
 .table-wrap {
-  overflow-x: auto;
+  overflow: auto;
 }
 
 table {
   width: 100%;
-  min-width: 680px;
+  min-width: 920px;
   border-collapse: collapse;
+}
+
+.collection-table {
+  width: max-content;
+  min-width: 100%;
 }
 
 th,
@@ -291,6 +301,9 @@ th {
 
 td {
   font-size: 14px;
+  max-width: 480px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 tr:last-child td {
@@ -338,6 +351,70 @@ tr:last-child td {
 
 .empty-row {
   color: var(--muted);
+}
+
+.collection-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.collection-meta span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--surface-subtle);
+}
+
+.query-line {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 18px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.empty-panel {
+  padding: 18px;
+  color: var(--muted);
+}
+
+.row-details summary,
+.raw-details summary {
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.row-details pre,
+.json-block {
+  max-width: min(1100px, 78vw);
+  margin: 10px 0 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: #fbfaf7;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.raw-details {
+  padding: 18px;
+}
+
+code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1100px) {
