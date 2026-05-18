@@ -30,8 +30,14 @@
     headlineStatus: document.getElementById("headlineStatus"),
     headlineMeta: document.getElementById("headlineMeta"),
     metricStrip: document.getElementById("metricStrip"),
+    summaryFields: document.getElementById("summaryFields"),
+    metricsFields: document.getElementById("metricsFields"),
+    latestRunFields: document.getElementById("latestRunFields"),
+    latestCloudSyncFields: document.getElementById("latestCloudSyncFields"),
+    aiFields: document.getElementById("aiFields"),
     ingestRows: document.getElementById("ingestRows"),
-    cloudRows: document.getElementById("cloudRows")
+    cloudRows: document.getElementById("cloudRows"),
+    rawJson: document.getElementById("rawJson")
   };
 
   function loadSettings() {
@@ -113,10 +119,14 @@
     hideAlert();
 
     try {
-      state.data = state.settings.endpoint
-        ? await fetchDashboard()
-        : sampleDashboard();
-      renderDashboard(state.data, !state.settings.endpoint);
+      if (!state.settings.endpoint) {
+        state.data = null;
+        renderShell();
+        showAlert("Configure the dashboard API endpoint to load live data.");
+        return;
+      }
+      state.data = await fetchDashboard();
+      renderDashboard(state.data);
     } catch (err) {
       showAlert(err.message || String(err));
     } finally {
