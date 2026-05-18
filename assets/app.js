@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = "scboard.ops.settings";
   const SESSION_TOKEN_KEY = "scboard.ops.token";
-  const APP_VERSION = "ops-debug-2026-05-18-1";
+  const APP_VERSION = "ops-debug-2026-05-18-2";
   const DEFAULT_LIMIT = 20;
   const DEFAULT_REFRESH_SECONDS = 60;
   const REQUEST_TIMEOUT_MS = 15000;
@@ -76,6 +76,7 @@
   els.debugLog = document.getElementById("debugLog");
   els.copyLogButton = document.getElementById("copyLogButton");
   els.clearLogButton = document.getElementById("clearLogButton");
+  els.testApiButton = document.getElementById("testApiButton");
 
   function loadSettings() {
     let saved = {};
@@ -116,11 +117,18 @@
     renderEmpty();
     logDebug("init", {
       version: APP_VERSION,
+      pageProtocol: window.location.protocol,
       endpointConfigured: Boolean(state.settings.endpoint),
       tokenConfigured: Boolean(state.settings.token),
       limit: state.settings.limit,
       autoRefreshSeconds: state.settings.refreshInterval
     });
+    if (window.location.protocol === "file:") {
+      showAlert("This page is opened as file://. Use an http:// local server or the deployed Web URL for reliable API requests.");
+      logDebug("file protocol detected; browser may block or delay cross-origin API requests", {
+        href: window.location.href
+      }, "error");
+    }
     els.refreshButton.addEventListener("click", () => refresh());
     if (els.clearLogButton) {
       els.clearLogButton.addEventListener("click", () => {
@@ -130,6 +138,9 @@
     }
     if (els.copyLogButton) {
       els.copyLogButton.addEventListener("click", copyDebugLog);
+    }
+    if (els.testApiButton) {
+      els.testApiButton.addEventListener("click", testApi);
     }
     els.settingsForm.addEventListener("submit", event => {
       event.preventDefault();
@@ -224,18 +235,58 @@
     }
   }
 
-  async function fetchDashboard() {
+  async function testApi() {
+    if (state.loading) {
+      logDebug("test api skipped: request already loading");
+      return;
+    }
+    state.loading = true;
+    if (els.testApiButton) els.testApiButton.disabled = true;
+    hideAlert();
+    const startedAt = Date.now();
+    logDebug("test api start", {
+      endpoint: state.settings.endpoint,
+      tokenConfigured: Boolean(state.settings.token)
+    });
+    try {
+      if (!state.settings.endpoint) {
+        showAlert("Configure the dashboard API endpoint first.");
+        logDebug("test api stopped: missing endpoint");
+        return;
+      }
+      const payload = await fetchDashboard({ debugPing: true, limit: 1, ingestLimit: 1, cloudSyncLimit: 1 });
+      logDebug("test api success", {
+        elapsedMs: Date.now() - startedAt,
+        pong: payload && payload.pong,
+        debugPing: payload && payload.debugPing,
+        asOf: payload && payload.asOf
+      });
+      showAlert("Test API succeeded. HTTP access and token auth are working.");
+    } catch (err) {
+      logDebug("test api failed", {
+        elapsedMs: Date.now() - startedAt,
+        name: err && err.name,
+        message: err && err.message ? err.message : String(err)
+      }, "error");
+      showAlert(err.message || String(err));
+    } finally {
+      state.loading = false;
+      if (els.testApiButton) els.testApiButton.disabled = false;
+    }
+  }
+
+  async function fetchDashboard(extraBody) {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     const startedAt = Date.now();
-    const body = {
+    const body = Object.assign({
       token: state.settings.token,
       opsToken: state.settings.token,
       accessToken: state.settings.token,
       limit: state.settings.limit,
       ingestLimit: state.settings.limit,
       cloudSyncLimit: state.settings.limit
-    };
+    }, extraBody || {});
     logDebug("fetch request prepared", {
       endpoint: state.settings.endpoint,
       method: "POST",

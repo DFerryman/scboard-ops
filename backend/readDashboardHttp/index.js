@@ -152,6 +152,15 @@ exports.main = async (event) => {
       return http(auth.statusCode, { error: { code: 'FORBIDDEN', message: auth.message } })
     }
 
+    if (body && body.debugPing) {
+      return http(200, {
+        ok: true,
+        pong: true,
+        debugPing: true,
+        asOf: Math.floor(Date.now() / 1000)
+      })
+    }
+
     const defaultLimit = clampLimit(body.limit, DEFAULT_LIMIT)
     const ingestLimit = clampLimit(body.ingestLimit, defaultLimit)
     const cloudSyncLimit = clampLimit(body.cloudSyncLimit, defaultLimit)
