@@ -516,6 +516,9 @@
     }
     const normalized = Object.assign({}, payload);
     normalized.collections = normalizeCollections(payload);
+    if (payload.collection) {
+      normalized.collection = normalizeCollection(payload.collection);
+    }
     normalized.ingestRuns = Array.isArray(payload.ingestRuns) ? payload.ingestRuns : [];
     normalized.cloudSyncRuns = Array.isArray(payload.cloudSyncRuns) ? payload.cloudSyncRuns : [];
     normalized.asOf = payload.asOf || Math.floor(Date.now() / 1000);
@@ -531,15 +534,7 @@
   function normalizeCollections(payload) {
     if (Array.isArray(payload.collections)) {
       logDebug("using payload.collections", { count: payload.collections.length });
-      return payload.collections.map(item => ({
-        name: item.name,
-        count: Number.isInteger(item.count) ? item.count : (Array.isArray(item.docs) ? item.docs.length : 0),
-        docs: Array.isArray(item.docs) ? item.docs : [],
-        loaded: item.loaded === true,
-        query: item.query,
-        limit: item.limit,
-        sort: item.sort
-      }));
+      return payload.collections.map(normalizeCollection);
     }
 
     const summaryDocs = payload.summary ? [payload.summary] : [];
@@ -561,6 +556,19 @@
         query: { syncVersion: payload.syncVersion }
       }
     ];
+  }
+
+  function normalizeCollection(item) {
+    const docs = Array.isArray(item && item.docs) ? item.docs : [];
+    return {
+      name: item && item.name,
+      count: Number.isInteger(item && item.count) ? item.count : docs.length,
+      docs,
+      loaded: item && item.loaded === false ? false : Array.isArray(item && item.docs),
+      query: item && item.query,
+      limit: item && item.limit,
+      sort: item && item.sort
+    };
   }
 
   function renderEmpty() {
@@ -1101,7 +1109,7 @@
         ingestLimit: state.settings.limit,
         cloudSyncLimit: state.settings.limit
       });
-      const loaded = payload.collection || (Array.isArray(payload.collections) ? payload.collections[0] : null);
+      const loaded = collectionFromPayload(payload, name) || payload.collection;
       if (!loaded || !loaded.name) throw new Error("Dashboard API returned no collection payload");
       state.snapshot = mergeCollection(state.snapshot || snapshot, loaded, payload);
       logDebug("collection load complete", {
@@ -1135,6 +1143,11 @@
     next.collections = collections;
     next.asOf = payload && payload.asOf ? payload.asOf : Math.floor(Date.now() / 1000);
     return normalizePayload(next);
+  }
+
+  function collectionFromPayload(payload, name) {
+    const collections = Array.isArray(payload && payload.collections) ? payload.collections : [];
+    return collections.find(item => item && item.name === name) || null;
   }
 
   document.addEventListener("click", event => {
