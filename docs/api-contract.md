@@ -76,7 +76,20 @@ Allowed collection names are `push_log`, `hn_dashboard_summary`,
     "metrics": {},
     "latestRun": {},
     "latestCloudSync": {},
-    "ai": {}
+    "ai": {},
+    "insights": {
+      "enabled": true,
+      "update_interval_seconds": 14400,
+      "window_days": 7,
+      "latest": {
+        "date": "2026-05-19",
+        "generated_at": 1779060000,
+        "due": false
+      },
+      "latestRun": {
+        "status": "ok"
+      }
+    }
   },
   "ingestRuns": [],
   "cloudSyncRuns": [],

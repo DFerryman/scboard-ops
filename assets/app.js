@@ -59,12 +59,13 @@
     "metrics",
     "latestRun",
     "latestCloudSync",
-    "ai"
+    "ai",
+    "insights"
   ];
   const TABLE_MAX_COLUMNS = 6;
   const COLLECTION_TABLE_COLUMNS = {
     push_log: ["action", "ok", "statusCode", "syncVersion", "ts", "counts"],
-    hn_dashboard_summary: ["syncVersion", "publishedAt", "appVersion", "serverTime", "metrics", "latestRun"],
+    hn_dashboard_summary: ["syncVersion", "publishedAt", "metrics", "latestRun", "latestCloudSync", "insights"],
     hn_dashboard_ingest_runs: ["status", "run_id", "syncVersion", "started_at", "finished_at", "elapsed_seconds"],
     hn_dashboard_cloud_sync_runs: ["status", "run_id", "syncVersion", "started_at", "finished_at", "elapsed_seconds"],
     default: ["status", "ok", "action", "run_id", "syncVersion", "started_at"]
@@ -595,10 +596,13 @@
     const metrics = summary.metrics || {};
     const latestRun = summary.latestRun || {};
     const latestCloudSync = summary.latestCloudSync || {};
+    const insights = summary.insights || {};
+    const latestInsights = insights.latest || {};
     const collections = orderedCollections(snapshot.collections);
     const docCount = collections.reduce((sum, collection) => sum + collection.docs.length, 0);
     const pipelineStatus = latestRun.status || "unknown";
     const syncStatus = latestCloudSync.status || "unknown";
+    const insightsStatus = insightsHealthStatus(insights);
 
     els.headlineStatus.innerHTML = `${statusBadge(pipelineStatus)} ${escapeHtml(labelForStatus(pipelineStatus))}`;
     els.headlineMeta.textContent = [
@@ -616,7 +620,10 @@
       ["Limit", state.settings.limit],
       ["Catalog", valueOrDash(metrics.catalog_version)],
       ["Stories", valueOrDash(metrics.total_stories)],
-      ["Failure rate", formatPercent(metrics.failure_rate)]
+      ["Failure rate", formatPercent(metrics.failure_rate)],
+      ["Insights", labelForStatus(insightsStatus)],
+      ["Insights latest", latestInsights.generated_at ? formatTime(latestInsights.generated_at) : "-"],
+      ["Insights interval", formatIntervalSeconds(insights.update_interval_seconds)]
     ]);
 
     els.collectionSections.innerHTML = collections.map(renderCollection).join("");
@@ -921,7 +928,7 @@
     const s = status.toLowerCase();
     if (["ok", "success", "healthy", "true"].includes(s)) return "status--ok";
     if (["failed", "error", "stale", "false"].includes(s)) return "status--bad";
-    if (["warning", "deferred"].includes(s)) return "status--warn";
+    if (["warning", "deferred", "due"].includes(s)) return "status--warn";
     if (["running", "in_progress"].includes(s)) return "status--info";
     return "status--idle";
   }
@@ -983,6 +990,27 @@
     if (!Number.isFinite(n)) return "-";
     if (/ms/i.test(String(key))) return formatMilliseconds(n);
     return formatSeconds(n);
+  }
+
+  function formatIntervalSeconds(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "-";
+    if (n === 0) return "Always";
+    if (n % 86400 === 0) return `${n / 86400} d`;
+    if (n % 3600 === 0) return `${n / 3600} h`;
+    if (n % 60 === 0) return `${n / 60} min`;
+    return formatSeconds(n);
+  }
+
+  function insightsHealthStatus(insights) {
+    if (!insights || typeof insights !== "object") return "unknown";
+    if (insights.enabled === false) return "disabled";
+    const latestRun = insights.latestRun || {};
+    if (latestRun.status === "failed") return "failed";
+    const latest = insights.latest || {};
+    if (latest.due === true) return "due";
+    if (latest.generated_at) return "ok";
+    return latestRun.status || "unknown";
   }
 
   function formatMilliseconds(value) {

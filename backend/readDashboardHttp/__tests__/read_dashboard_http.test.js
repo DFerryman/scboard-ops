@@ -85,7 +85,18 @@ async function run() {
       { _id: 'p2', ts: 20, action: 'writeDashboard', ok: true }
     ],
     hn_dashboard_summary: [
-      { _id: 'summary', syncVersion: 42, publishedAt: 1779070000, _openid: 'hidden' }
+      {
+        _id: 'summary',
+        syncVersion: 42,
+        publishedAt: 1779070000,
+        insights: {
+          enabled: true,
+          update_interval_seconds: 14400,
+          latest: { date: '2026-05-19', generated_at: 1779060000, due: false },
+          latestRun: { status: 'ok' }
+        },
+        _openid: 'hidden'
+      }
     ],
     hn_dashboard_ingest_runs: [
       { _id: '42:run-old', syncVersion: 42, started_at: 100 },
@@ -137,6 +148,9 @@ async function run() {
   assert.equal((mockDb.readCounts.get('push_log') || { query: 0 }).query, 0)
   assert.equal((mockDb.readCounts.get('hn_dashboard_ingest_runs') || { query: 0 }).query, 0)
   assert.equal((mockDb.readCounts.get('hn_dashboard_cloud_sync_runs') || { query: 0 }).query, 0)
+  assert.equal(payload.summary.insights.update_interval_seconds, 14400)
+  assert.equal(payload.summary.insights.latest.date, '2026-05-19')
+  assert.equal(Object.prototype.hasOwnProperty.call(payload.summary, '_openid'), false)
 
   const pushLogResponse = await dashboard.main({
     httpMethod: 'POST',
