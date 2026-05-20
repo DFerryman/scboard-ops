@@ -8,6 +8,7 @@ function clone(value) {
 function createMockDb(seed) {
   const failCollections = new Set()
   const readCounts = new Map()
+  const queryLimits = new Map()
 
   function count(name, type) {
     const current = readCounts.get(name) || { doc: 0, query: 0 }
@@ -57,6 +58,7 @@ function createMockDb(seed) {
       async get() {
         if (failCollections.has(name)) throw new Error(`${name} failed`)
         count(name, 'query')
+        queryLimits.set(name, state.max)
         let rows = state.docs.slice()
         if (state.filter) {
           rows = rows.filter(doc => Object.keys(state.filter).every(key => doc[key] === state.filter[key]))
@@ -74,7 +76,7 @@ function createMockDb(seed) {
     }
   }
 
-  return { collection, failCollections, readCounts }
+  return { collection, failCollections, readCounts, queryLimits }
 }
 
 async function run() {
@@ -161,6 +163,7 @@ async function run() {
   const pushLogPayload = JSON.parse(pushLogResponse.body)
   assert.equal(pushLogPayload.collection.loaded, true)
   assert.deepEqual(pushLogPayload.collection.docs.map(item => item._id), ['p3', 'p2'])
+  assert.equal(mockDb.queryLimits.get('push_log'), 2)
   assert.equal(Object.prototype.hasOwnProperty.call(pushLogPayload.collection.docs[0], '_openid'), false)
 
   const ingestResponse = await dashboard.main({
@@ -177,6 +180,7 @@ async function run() {
   assert.equal(ingestResponse.statusCode, 200)
   const ingestPayload = JSON.parse(ingestResponse.body)
   assert.deepEqual(ingestPayload.collection.docs.map(item => item._id), ['42:run-new', '42:run-old'])
+  assert.equal(mockDb.queryLimits.get('hn_dashboard_ingest_runs'), 2)
 
   const rejectedResponse = await dashboard.main({
     httpMethod: 'POST',

@@ -217,18 +217,19 @@ async function getSummary() {
 
 async function getRuns(collection, syncVersion, limit) {
   if (!Number.isInteger(syncVersion)) return []
+  const cappedLimit = clampLimit(limit, DEFAULT_LIMIT)
 
   try {
     const res = await db.collection(collection)
       .where({ syncVersion })
       .orderBy('started_at', 'desc')
-      .limit(MAX_LIMIT)
+      .limit(cappedLimit)
       .get()
 
     return ((res && res.data) || [])
       .map(stripSystemFields)
       .sort(byStartedAtDesc)
-      .slice(0, limit)
+      .slice(0, cappedLimit)
   } catch (e) {
     if (isNotFoundError(e)) return []
     throw e
@@ -236,16 +237,17 @@ async function getRuns(collection, syncVersion, limit) {
 }
 
 async function getPushLog(limit) {
+  const cappedLimit = clampLimit(limit, DEFAULT_LIMIT)
   try {
     const res = await db.collection('push_log')
       .orderBy('ts', 'desc')
-      .limit(MAX_LIMIT)
+      .limit(cappedLimit)
       .get()
 
     return ((res && res.data) || [])
       .map(stripSystemFields)
       .sort(byTsDesc)
-      .slice(0, limit)
+      .slice(0, cappedLimit)
   } catch (e) {
     if (isNotFoundError(e)) return []
     throw e

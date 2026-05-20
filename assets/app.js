@@ -3,7 +3,8 @@
 
   const STORAGE_KEY = "scboard.ops.settings";
   const SESSION_TOKEN_KEY = "scboard.ops.token";
-  const APP_VERSION = "ops-debug-2026-05-20-1";
+  const SETTINGS_SCHEMA_VERSION = 2;
+  const APP_VERSION = "ops-debug-2026-05-20-2";
   const DEFAULT_LIMIT = 20;
   const DEFAULT_REFRESH_SECONDS = 0;
   const REQUEST_TIMEOUT_MS = 60000;
@@ -111,16 +112,21 @@
       saved = {};
     }
     const endpoint = normalizeEndpoint(saved.endpoint || config.dashboardEndpoint || "");
+    const savedVersion = clampInt(saved.settingsVersion, 0, 0, SETTINGS_SCHEMA_VERSION);
+    const refreshInterval = savedVersion >= SETTINGS_SCHEMA_VERSION
+      ? clampInt(saved.refreshInterval, config.refreshSeconds, 0, 3600)
+      : config.refreshSeconds;
     return {
       endpoint,
       token: sessionStorage.getItem(SESSION_TOKEN_KEY) || "",
       limit: clampInt(saved.limit, DEFAULT_LIMIT, 1, 100),
-      refreshInterval: clampInt(saved.refreshInterval, config.refreshSeconds, 0, 3600)
+      refreshInterval
     };
   }
 
   function saveSettings() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      settingsVersion: SETTINGS_SCHEMA_VERSION,
       endpoint: state.settings.endpoint,
       limit: state.settings.limit,
       refreshInterval: state.settings.refreshInterval
