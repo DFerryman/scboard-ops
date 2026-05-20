@@ -3,9 +3,9 @@
 
   const STORAGE_KEY = "scboard.ops.settings";
   const SESSION_TOKEN_KEY = "scboard.ops.token";
-  const APP_VERSION = "ops-debug-2026-05-18-7";
+  const APP_VERSION = "ops-debug-2026-05-20-1";
   const DEFAULT_LIMIT = 20;
-  const DEFAULT_REFRESH_SECONDS = 60;
+  const DEFAULT_REFRESH_SECONDS = 0;
   const REQUEST_TIMEOUT_MS = 60000;
   const REQUEST_RETRY_DELAY_MS = 1200;
   const COLLECTION_ORDER = [

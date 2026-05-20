@@ -39,7 +39,9 @@ Open `index.html` directly in a browser. With no API endpoint configured, the
 panel shows an empty state. It does not render mock data.
 
 For live data, enter the protected dashboard API URL and token in the Settings
-panel. The endpoint must implement the contract in `docs/api-contract.md`.
+panel. Auto refresh is off by default; use manual refresh or opt into a refresh
+interval only while actively monitoring. The endpoint must implement the contract
+in `docs/api-contract.md`.
 
 ## Cloudflare Workers Deployment
 
