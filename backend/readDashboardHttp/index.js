@@ -4,6 +4,7 @@
 // using token auth for normal Web HTTP calls.
 
 const cloud = require('wx-server-sdk')
+const crypto = require('crypto')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
@@ -11,6 +12,7 @@ const db = cloud.database()
 
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 100
+const MAX_HTTP_BODY_BYTES = positiveIntEnv('OPS_DASHBOARD_MAX_BODY_BYTES', 64 * 1024)
 const FUNCTION_VERSION = 'readDashboardHttp-2026-05-18-1'
 const COLLECTIONS = [
   'push_log',
@@ -18,6 +20,11 @@ const COLLECTIONS = [
   'hn_dashboard_ingest_runs',
   'hn_dashboard_cloud_sync_runs'
 ]
+
+function positiveIntEnv(name, fallback) {
+  const n = parseInt(process.env[name] || '', 10)
+  return Number.isInteger(n) && n > 0 ? n : fallback
+}
 
 function logInfo(message, data) {
   try {
@@ -55,15 +62,22 @@ function getHeader(headers, name) {
   return ''
 }
 
+function configuredCorsOrigin() {
+  const origin = String(process.env.OPS_DASHBOARD_ALLOWED_ORIGIN || '').trim()
+  if (origin) return origin
+  return process.env.OPS_DASHBOARD_ALLOW_ANY_ORIGIN === '1' ? '*' : ''
+}
+
 function corsHeaders() {
-  const origin = process.env.OPS_DASHBOARD_ALLOWED_ORIGIN || '*'
-  return {
+  const origin = configuredCorsOrigin()
+  const headers = {
     'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': origin,
     'access-control-allow-methods': 'GET, POST, OPTIONS',
     'access-control-allow-headers': 'content-type, authorization, x-ops-token',
     'vary': 'origin'
   }
+  if (origin) headers['access-control-allow-origin'] = origin
+  return headers
 }
 
 function http(statusCode, payload) {
@@ -82,15 +96,28 @@ function preflight() {
   }
 }
 
+function rawHttpBody(event) {
+  if (!event || !event.body) return ''
+  if (typeof event.body === 'object') return JSON.stringify(event.body)
+  return event.isBase64Encoded
+    ? Buffer.from(String(event.body), 'base64').toString('utf8')
+    : String(event.body)
+}
+
 function parseHttpBody(event) {
   if (!event || !event.body) return {}
   if (typeof event.body === 'object') return event.body
-  const rawBody = event.isBase64Encoded
-    ? Buffer.from(String(event.body), 'base64').toString('utf8')
-    : String(event.body)
+  const rawBody = rawHttpBody(event)
 
   const direct = parseBodyText(rawBody)
   if (direct) return direct
+
+  const rawText = String(rawBody || '').trim()
+  if (!rawText.includes('=')) {
+    const err = new Error('invalid JSON body')
+    err.statusCode = 400
+    throw err
+  }
 
   try {
     const params = new URLSearchParams(rawBody)
@@ -110,7 +137,6 @@ function parseHttpBody(event) {
 
   const err = new Error('invalid JSON body')
   err.statusCode = 400
-  err.bodyPreview = rawBody.slice(0, 200)
   throw err
 }
 
@@ -147,7 +173,17 @@ function bearerToken(value) {
   return match ? match[1].trim() : ''
 }
 
-function authorizeHttp(event, payload) {
+function timingSafeEqualText(actual, expected) {
+  const actualBuf = Buffer.from(String(actual || ''), 'utf8')
+  const expectedBuf = Buffer.from(String(expected || ''), 'utf8')
+  if (actualBuf.length !== expectedBuf.length) {
+    crypto.timingSafeEqual(expectedBuf, expectedBuf)
+    return false
+  }
+  return crypto.timingSafeEqual(actualBuf, expectedBuf)
+}
+
+function authorizeHttp(event) {
   const expected = process.env.OPS_DASHBOARD_TOKEN || ''
   if (!expected) {
     return {
@@ -160,10 +196,9 @@ function authorizeHttp(event, payload) {
 
   const headers = event && event.headers ? event.headers : {}
   const actual = bearerToken(getHeader(headers, 'authorization')) ||
-    getHeader(headers, 'x-ops-token') ||
-    (payload && (payload.token || payload.opsToken || payload.accessToken))
+    getHeader(headers, 'x-ops-token')
 
-  if (!actual || actual !== expected) {
+  if (!actual || !timingSafeEqualText(actual, expected)) {
     return {
       ok: false,
       statusCode: 401,
@@ -173,6 +208,20 @@ function authorizeHttp(event, payload) {
   }
 
   return { ok: true }
+}
+
+function requireHttpCorsOrigin() {
+  if (configuredCorsOrigin()) return null
+  return {
+    ok: false,
+    statusCode: 500,
+    code: 'SERVER_NOT_CONFIGURED',
+    message: 'OPS_DASHBOARD_ALLOWED_ORIGIN is not configured'
+  }
+}
+
+function publicError(code, message) {
+  return { error: { code: code || 'INTERNAL', message: message || 'internal error' } }
 }
 
 function clampLimit(value, fallback) {
@@ -428,6 +477,14 @@ exports.main = async (event) => {
     hasBody: Boolean(event && event.body)
   })
 
+  if (httpMode) {
+    const cors = requireHttpCorsOrigin()
+    if (cors) {
+      logInfo('cors rejected', { elapsedMs: Date.now() - startedAt, code: cors.code })
+      return http(cors.statusCode, publicError(cors.code, cors.message))
+    }
+  }
+
   if (httpMode && queryValue(event, 'versionProbe')) {
     return http(200, {
       ok: true,
@@ -448,17 +505,24 @@ exports.main = async (event) => {
 
   let payload = httpMode ? {} : (event || {})
   if (httpMode) {
+    const rawBody = rawHttpBody(event)
+    if (Buffer.byteLength(rawBody, 'utf8') > MAX_HTTP_BODY_BYTES) {
+      return http(413, publicError('PAYLOAD_TOO_LARGE', 'request body too large'))
+    }
+    const auth = authorizeHttp(event)
+    if (!auth.ok) {
+      logInfo('auth rejected', {
+        elapsedMs: Date.now() - startedAt,
+        code: auth.code,
+        statusCode: auth.statusCode || 403
+      })
+      return http(auth.statusCode || 403, publicError(auth.code, auth.message))
+    }
     try {
       payload = parseHttpBody(event)
     } catch (e) {
       logError('parse body failed', e, { elapsedMs: Date.now() - startedAt })
-      return http(e.statusCode || 400, {
-        error: {
-          code: e.code || 'BAD_REQUEST',
-          message: String(e && (e.message || e)),
-          bodyPreview: e && e.bodyPreview ? e.bodyPreview : undefined
-        }
-      })
+      return http(e.statusCode || 400, publicError(e.code || 'BAD_REQUEST', 'invalid request body'))
     }
   }
 
@@ -473,15 +537,6 @@ exports.main = async (event) => {
     return httpMode ? http(200, probe) : probe
   }
 
-  const auth = authorizeHttp(event, payload)
-  if (!auth.ok) {
-    logInfo('auth rejected', {
-      elapsedMs: Date.now() - startedAt,
-      code: auth.code,
-      statusCode: auth.statusCode || 403
-    })
-    return http(auth.statusCode || 403, { error: { code: auth.code, message: auth.message } })
-  }
   logInfo('auth ok', { elapsedMs: Date.now() - startedAt, httpMode })
 
   try {
@@ -511,7 +566,7 @@ exports.main = async (event) => {
     return http(e.statusCode || 500, {
       error: {
         code: e.code || 'INTERNAL',
-        message: String(e && (e.message || e))
+        message: e.statusCode && e.statusCode < 500 ? String(e && (e.message || e)) : 'dashboard request failed'
       }
     })
   }

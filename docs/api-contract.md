@@ -28,8 +28,7 @@ must not read database collections:
 
 ```json
 {
-  "debugPing": true,
-  "token": "<ops-token>"
+  "debugPing": true
 }
 ```
 
@@ -52,15 +51,15 @@ Lazy-load one collection after the operator opens it:
 {
   "action": "readCollection",
   "collection": "push_log",
-  "limit": 100,
-  "token": "<ops-token>"
+  "limit": 100
 }
 ```
 
 Allowed collection names are `push_log`, `hn_dashboard_summary`,
 `hn_dashboard_ingest_runs`, and `hn_dashboard_cloud_sync_runs`.
 
-`x-ops-token: <ops-token>` is also accepted by the reference backend.
+`x-ops-token: <ops-token>` is also accepted by the reference backend. Tokens are
+accepted only from HTTP headers, never from the JSON body.
 
 ## Response
 
@@ -196,8 +195,9 @@ authorization with Web-appropriate token authorization.
 ## Required Cloud Function Environment
 
 - `OPS_DASHBOARD_TOKEN`: shared token required by the Web panel.
-- `OPS_DASHBOARD_ALLOWED_ORIGIN`: optional CORS origin. Use the deployed panel
-  origin in production.
+- `OPS_DASHBOARD_ALLOWED_ORIGIN`: required CORS origin for production. Use the
+  deployed panel origin. `OPS_DASHBOARD_ALLOW_ANY_ORIGIN=1` is only for local or
+  disposable test environments.
 
 Do not put CloudBase `secretId`, `secretKey`, database credentials, or a
 long-lived admin token in browser JavaScript.
@@ -208,8 +208,10 @@ long-lived admin token in browser JavaScript.
 2. Configure HTTP access for that function, for example `/api/dashboard`.
 3. Set `OPS_DASHBOARD_TOKEN`.
 4. Set `OPS_DASHBOARD_ALLOWED_ORIGIN` to the Web panel origin.
-5. Deploy this repo as static files.
-6. Configure the endpoint and token in the panel Settings.
+5. Deploy this repo as static files. Include `_headers` so the static host sends
+   CSP, referrer, nosniff, and frame-denial headers.
+6. Configure the HTTPS endpoint and token in the panel Settings. Non-local
+   `http://` endpoints are rejected by the Web panel.
 
 References:
 

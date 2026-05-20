@@ -147,7 +147,8 @@
   function normalizeEndpoint(value) {
     const text = String(value || "").trim();
     if (!text) return "";
-    if (/^https?:\/\//i.test(text)) return text;
+    if (/^https:\/\//i.test(text)) return text;
+    if (isLocalHttpEndpoint(text)) return text;
     return "";
   }
 
@@ -155,8 +156,18 @@
     const text = String(value || "").trim();
     if (!text) return "Configure the dashboard API endpoint to load live data.";
     if (/^file:/i.test(text)) return "The API endpoint is set to a local file:// URL. Enter the real https:// dashboard API endpoint.";
-    if (!/^https?:\/\//i.test(text)) return "The API endpoint must start with http:// or https://.";
+    if (!/^https?:\/\//i.test(text)) return "The API endpoint must start with https://.";
+    if (/^http:\/\//i.test(text) && !isLocalHttpEndpoint(text)) return "The API endpoint must use https:// outside local development.";
     return "";
+  }
+
+  function isLocalHttpEndpoint(value) {
+    try {
+      const url = new URL(String(value || ""));
+      return url.protocol === "http:" && /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(url.hostname);
+    } catch (_) {
+      return false;
+    }
   }
 
   function init() {
@@ -402,9 +413,6 @@
     const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     const startedAt = Date.now();
     const body = Object.assign({
-      token: state.settings.token,
-      opsToken: state.settings.token,
-      accessToken: state.settings.token,
       limit: state.settings.limit,
       pushLogLimit: state.settings.limit,
       ingestLimit: state.settings.limit,
@@ -413,7 +421,7 @@
       logDebug("fetch request prepared", {
       endpoint: state.settings.endpoint,
       method: "POST",
-      contentType: "text/plain;charset=UTF-8",
+      contentType: "application/json",
       timeoutMs: REQUEST_TIMEOUT_MS,
       attempt: attempt || 1,
       body: redactRequestBody(body)
@@ -424,7 +432,10 @@
       const response = await fetch(state.settings.endpoint, {
         method: "POST",
         mode: "cors",
-        headers: { "content-type": "text/plain;charset=UTF-8" },
+        headers: {
+          "content-type": "application/json",
+          "authorization": `Bearer ${state.settings.token}`
+        },
         signal: controller.signal,
         body: JSON.stringify(body)
       });
@@ -475,9 +486,7 @@
 
   function requestBodyForDebug() {
     return {
-      token: state.settings.token ? "(configured)" : "",
-      opsToken: state.settings.token ? "(configured)" : "",
-      accessToken: state.settings.token ? "(configured)" : "",
+      tokenHeader: state.settings.token ? "(configured)" : "",
       limit: state.settings.limit,
       ingestLimit: state.settings.limit,
       cloudSyncLimit: state.settings.limit,
@@ -1084,11 +1093,7 @@
   }
 
   function redactRequestBody(body) {
-    return Object.assign({}, body, {
-      token: body.token ? "(configured)" : "",
-      opsToken: body.opsToken ? "(configured)" : "",
-      accessToken: body.accessToken ? "(configured)" : ""
-    });
+    return Object.assign({}, body);
   }
 
   function logDebug(message, data, level) {

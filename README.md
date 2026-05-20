@@ -38,10 +38,11 @@ the Web panel.
 Open `index.html` directly in a browser. With no API endpoint configured, the
 panel shows an empty state. It does not render mock data.
 
-For live data, enter the protected dashboard API URL and token in the Settings
-panel. Auto refresh is off by default; use manual refresh or opt into a refresh
-interval only while actively monitoring. The endpoint must implement the contract
-in `docs/api-contract.md`.
+For live data, enter the protected HTTPS dashboard API URL and token in the
+Settings panel. Local `http://localhost` endpoints are allowed for development;
+non-local `http://` endpoints are rejected. Auto refresh is off by default; use
+manual refresh or opt into a refresh interval only while actively monitoring.
+The endpoint must implement the contract in `docs/api-contract.md`.
 
 ## Cloudflare Workers Deployment
 
@@ -71,6 +72,7 @@ dashboard API. It follows the existing Mini Program cloud-function style:
 - lazily reads recent `hn_dashboard_ingest_runs` documents only when opened;
 - lazily reads recent `hn_dashboard_cloud_sync_runs` documents only when opened;
 - enforces `OPS_DASHBOARD_TOKEN`;
+- requires `OPS_DASHBOARD_ALLOWED_ORIGIN` for CORS in production;
 - returns collection placeholders first, then loaded collection rows via
   `action: "readCollection"`.
 

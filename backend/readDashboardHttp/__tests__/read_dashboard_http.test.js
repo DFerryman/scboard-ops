@@ -127,6 +127,7 @@ async function run() {
   }
 
   process.env.OPS_DASHBOARD_TOKEN = 'secret'
+  process.env.OPS_DASHBOARD_ALLOWED_ORIGIN = 'https://ops.example.com'
   const dashboard = require('../index.js')
 
   const okResponse = await dashboard.main({
@@ -135,6 +136,7 @@ async function run() {
     body: JSON.stringify({ limit: 2, pushLogLimit: 2, ingestLimit: 2, cloudSyncLimit: 2 })
   })
   assert.equal(okResponse.statusCode, 200)
+  assert.equal(okResponse.headers['access-control-allow-origin'], 'https://ops.example.com')
 
   const payload = JSON.parse(okResponse.body)
   assert.equal(payload.ok, true)
@@ -189,6 +191,31 @@ async function run() {
   })
   assert.equal(rejectedResponse.statusCode, 401)
 
+  const bodyTokenResponse = await dashboard.main({
+    httpMethod: 'POST',
+    headers: {},
+    body: JSON.stringify({ token: 'secret', limit: 1 })
+  })
+  assert.equal(bodyTokenResponse.statusCode, 401)
+
+  const malformedWithoutAuth = await dashboard.main({
+    httpMethod: 'POST',
+    headers: {},
+    body: '{not-json'
+  })
+  assert.equal(malformedWithoutAuth.statusCode, 401)
+
+  const malformedWithAuth = await dashboard.main({
+    httpMethod: 'POST',
+    headers: { Authorization: 'Bearer secret' },
+    body: '{not-json'
+  })
+  assert.equal(malformedWithAuth.statusCode, 400)
+  const malformedPayload = JSON.parse(malformedWithAuth.body)
+  assert.equal(malformedPayload.error.message, 'invalid request body')
+  assert.equal(JSON.stringify(malformedPayload).includes('not-json'), false)
+  assert.equal(JSON.stringify(malformedPayload).includes('bodyPreview'), false)
+
   const probeResponse = await dashboard.main({
     httpMethod: 'GET',
     queryStringParameters: { versionProbe: '1' }
@@ -203,7 +230,17 @@ async function run() {
     body: JSON.stringify({ action: 'readCollection', collection: 'push_log', limit: 2 })
   })
   assert.equal(failedResponse.statusCode, 500)
-  assert.equal(JSON.parse(failedResponse.body).error.code, 'INTERNAL')
+  const failedPayload = JSON.parse(failedResponse.body)
+  assert.equal(failedPayload.error.code, 'INTERNAL')
+  assert.equal(failedPayload.error.message, 'dashboard request failed')
+
+  delete process.env.OPS_DASHBOARD_ALLOWED_ORIGIN
+  const corsConfigResponse = await dashboard.main({
+    httpMethod: 'GET',
+    queryStringParameters: { versionProbe: '1' }
+  })
+  assert.equal(corsConfigResponse.statusCode, 500)
+  assert.equal(JSON.parse(corsConfigResponse.body).error.code, 'SERVER_NOT_CONFIGURED')
 
   Module._load = originalLoad
 }
