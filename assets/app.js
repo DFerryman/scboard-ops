@@ -4,7 +4,7 @@
   const STORAGE_KEY = "scboard.ops.settings";
   const SESSION_TOKEN_KEY = "scboard.ops.token";
   const SETTINGS_SCHEMA_VERSION = 2;
-  const APP_VERSION = "ops-debug-2026-05-20-2";
+  const APP_VERSION = "ops-debug-2026-05-24-1";
   const DEFAULT_LIMIT = 20;
   const DEFAULT_REFRESH_SECONDS = 0;
   const REQUEST_TIMEOUT_MS = 60000;
@@ -28,17 +28,31 @@
     hn_dashboard_cloud_sync_runs: "Recent cloud sync runs for the selected sync version."
   };
   const FIELD_LABELS = {
-    raw_status: "Original status"
+    raw_status: "Original status",
+    cleanup_status: "Cleanup",
+    insights_content_changed: "Insights changed",
+    insightsContentChanged: "Insights changed",
+    update_interval_min_seconds: "Min interval",
+    update_interval_max_seconds: "Max interval",
+    previousVersion: "Previous version",
+    retainedVersions: "Retained versions",
+    keepVersions: "Keep versions",
+    businessSkipped: "Business skipped",
+    imageCleanup: "Image cleanup"
   };
   const PREFERRED_COLUMNS = [
     "_id",
     "status",
+    "cleanup_status",
     "ok",
     "action",
     "statusCode",
     "run_id",
     "syncVersion",
     "sync_version",
+    "previousVersion",
+    "retainedVersions",
+    "keepVersions",
     "started_at",
     "ts",
     "publishedAt",
@@ -51,24 +65,31 @@
     "stories",
     "topics",
     "digests",
+    "insights",
+    "insights_content_changed",
+    "insightsContentChanged",
     "elapsed_seconds",
     "durationMs",
     "has_error",
     "signatureOk",
     "error",
+    "cleanup",
+    "businessSkipped",
+    "imageCleanup",
     "counts",
     "metrics",
     "latestRun",
     "latestCloudSync",
-    "ai",
-    "insights"
+    "update_interval_min_seconds",
+    "update_interval_max_seconds",
+    "ai"
   ];
   const TABLE_MAX_COLUMNS = 6;
   const COLLECTION_TABLE_COLUMNS = {
     push_log: ["action", "ok", "statusCode", "syncVersion", "ts", "counts"],
     hn_dashboard_summary: ["syncVersion", "publishedAt", "metrics", "latestRun", "latestCloudSync", "insights"],
     hn_dashboard_ingest_runs: ["status", "run_id", "syncVersion", "started_at", "finished_at", "elapsed_seconds"],
-    hn_dashboard_cloud_sync_runs: ["status", "run_id", "syncVersion", "started_at", "finished_at", "elapsed_seconds"],
+    hn_dashboard_cloud_sync_runs: ["status", "cleanup_status", "run_id", "sync_version", "started_at", "elapsed_seconds"],
     default: ["status", "ok", "action", "run_id", "syncVersion", "started_at"]
   };
 
@@ -629,7 +650,11 @@
       ["Failure rate", formatPercent(metrics.failure_rate)],
       ["Insights", labelForStatus(insightsStatus)],
       ["Insights latest", latestInsights.generated_at ? formatTime(latestInsights.generated_at) : "-"],
-      ["Insights interval", formatIntervalSeconds(insights.update_interval_seconds)]
+      ["Insights interval", formatIntervalRange(
+        insights.update_interval_seconds,
+        insights.update_interval_min_seconds,
+        insights.update_interval_max_seconds
+      )]
     ]);
 
     els.collectionSections.innerHTML = collections.map(renderCollection).join("");
@@ -786,6 +811,7 @@
 
   function tableValueHtml(value, key) {
     if (value === null || value === undefined || value === "") return `<span class="muted">-</span>`;
+    if (key === "cleanup_status") return statusBadge(value);
     if (typeof value === "boolean") return booleanBadge(value, "Yes", "No");
     if (key && looksLikeTimeKey(key)) return escapeHtml(formatTime(value));
     if (key && looksLikeDurationKey(key)) return escapeHtml(formatDuration(value, key));
@@ -803,6 +829,7 @@
 
   function valueHtml(value, key) {
     if (value === null || value === undefined || value === "") return `<span class="muted">-</span>`;
+    if (key === "cleanup_status" || key === "Cleanup") return statusBadge(value);
     if (typeof value === "boolean") return booleanBadge(value, "Yes", "No");
     if (key && looksLikeTimeKey(key)) {
       return `${escapeHtml(formatTime(value))}<span class="subtle">${escapeHtml(String(value))}</span>`;
@@ -898,6 +925,7 @@
     if (doc.ok !== undefined) badges.push(booleanBadge(doc.ok, "OK", "Not OK"));
     if (doc.stale !== undefined) badges.push(booleanBadge(!isTruthyFlag(doc.stale), "Fresh", "Stale"));
     if (doc.has_error !== undefined) badges.push(booleanBadge(!isTruthyFlag(doc.has_error), "No error", "Has error"));
+    if (doc.cleanup_status !== undefined) badges.push(statusBadge(doc.cleanup_status));
     if (doc.signatureOk !== undefined) badges.push(booleanBadge(doc.signatureOk, "Signature OK", "Signature failed"));
     return badges.join("");
   }
@@ -932,6 +960,8 @@
 
   function statusClass(status) {
     const s = status.toLowerCase();
+    if (s.startsWith("failed")) return "status--bad";
+    if (s.startsWith("skipped")) return "status--warn";
     if (["ok", "success", "healthy", "true"].includes(s)) return "status--ok";
     if (["failed", "error", "stale", "false"].includes(s)) return "status--bad";
     if (["warning", "deferred", "due"].includes(s)) return "status--warn";
@@ -942,6 +972,11 @@
   function labelForStatus(status) {
     const text = String(status || "unknown");
     if (text === "ok") return "OK";
+    if (text.includes(":")) {
+      const parts = text.split(":");
+      const head = parts.shift();
+      return `${humanizeToken(head)}: ${humanizeToken(parts.join(":"))}`;
+    }
     return humanizeToken(text);
   }
 
@@ -1006,6 +1041,16 @@
     if (n % 3600 === 0) return `${n / 3600} h`;
     if (n % 60 === 0) return `${n / 60} min`;
     return formatSeconds(n);
+  }
+
+  function formatIntervalRange(base, min, max) {
+    const minValue = Number(min);
+    const maxValue = Number(max);
+    if (Number.isFinite(minValue) && Number.isFinite(maxValue)) {
+      if (minValue === maxValue) return formatIntervalSeconds(minValue);
+      return `${formatIntervalSeconds(minValue)} to ${formatIntervalSeconds(maxValue)}`;
+    }
+    return formatIntervalSeconds(base);
   }
 
   function insightsHealthStatus(insights) {

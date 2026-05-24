@@ -107,7 +107,14 @@ async function run() {
     ],
     hn_dashboard_cloud_sync_runs: [
       { _id: '42:push-old', syncVersion: 42, started_at: 100 },
-      { _id: '42:push-new', syncVersion: 42, started_at: 250 },
+      {
+        _id: '42:push-new',
+        syncVersion: 42,
+        started_at: 250,
+        sync_version: 41,
+        cleanup_status: 'failed:timeout',
+        insights_content_changed: 2
+      },
       { _id: '41:push-other', syncVersion: 41, started_at: 500 }
     ]
   })
@@ -181,6 +188,24 @@ async function run() {
   const ingestPayload = JSON.parse(ingestResponse.body)
   assert.deepEqual(ingestPayload.collection.docs.map(item => item._id), ['42:run-new', '42:run-old'])
   assert.equal(mockDb.queryLimits.get('hn_dashboard_ingest_runs'), 2)
+
+  const cloudSyncResponse = await dashboard.main({
+    httpMethod: 'POST',
+    headers: { Authorization: 'Bearer secret' },
+    body: JSON.stringify({
+      action: 'readCollection',
+      collection: 'hn_dashboard_cloud_sync_runs',
+      syncVersion: 42,
+      limit: 2,
+      cloudSyncLimit: 2
+    })
+  })
+  assert.equal(cloudSyncResponse.statusCode, 200)
+  const cloudSyncPayload = JSON.parse(cloudSyncResponse.body)
+  assert.deepEqual(cloudSyncPayload.collection.docs.map(item => item._id), ['42:push-new', '42:push-old'])
+  assert.equal(cloudSyncPayload.collection.docs[0].cleanup_status, 'failed:timeout')
+  assert.equal(cloudSyncPayload.collection.docs[0].insights_content_changed, 2)
+  assert.equal(cloudSyncPayload.collection.docs[0].sync_version, 41)
 
   const rejectedResponse = await dashboard.main({
     httpMethod: 'POST',

@@ -74,6 +74,11 @@ dashboard API. It follows the existing Mini Program cloud-function style:
 - returns collection placeholders first, then loaded collection rows via
   `action: "readCollection"`.
 
+The panel now prioritizes the cloud sync fields added for retained multi-version
+publishing, especially `sync_version`, `cleanup_status`, and
+`insights_content_changed`, so cleanup failures are visible without expanding raw
+JSON rows. It still does not read the business `meta` collection directly.
+
 This is intentionally separate from the Mini Program `readDashboard` OPENID
 allowlist, because a normal Web browser request does not have a Mini Program
 OPENID context.

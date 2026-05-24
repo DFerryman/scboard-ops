@@ -75,11 +75,19 @@ Allowed collection names are `push_log`, `hn_dashboard_summary`,
     "publishedAt": 1779070000,
     "metrics": {},
     "latestRun": {},
-    "latestCloudSync": {},
+    "latestCloudSync": {
+      "run_id": "run-20260524-120000",
+      "status": "ok",
+      "sync_version": 42,
+      "cleanup_status": "ok",
+      "insights_content_changed": 1
+    },
     "ai": {},
     "insights": {
       "enabled": true,
       "update_interval_seconds": 14400,
+      "update_interval_min_seconds": 10800,
+      "update_interval_max_seconds": 18000,
       "window_days": 7,
       "latest": {
         "date": "2026-05-19",
@@ -189,6 +197,26 @@ The backend should keep this ops-only query flow:
 5. `readCollection` for `hn_dashboard_cloud_sync_runs` reads documents for the
    requested or current `syncVersion`, sorted by `started_at` descending.
 6. Strip system fields such as `_openid`.
+
+Recent server versions retain multiple published business snapshots so Mini
+Program cursors can keep paginating after `meta.currentVersion` changes. Ops
+still must not read the `meta` business collection directly; the retained
+version behavior is visible through `push_log` `cleanupOld.keepVersions` rows
+and the dashboard cloud-sync run fields below:
+
+- `sync_version`: the business catalog version handled by that cloud sync run.
+- `cleanup_status`: `ok`, `failed:<reason>`, `skipped:deadline`, or
+  `skipped:initial`; failure here means business publish can be healthy while
+  stale-version cleanup needs attention.
+- `insights_content_changed` / `insightsContentChanged`: number of insight
+  payloads whose content changed and were included in the push.
+
+`push_log` is failure-oriented operational evidence, not a complete request
+ledger. Successful push calls are sampled only when
+`PUSH_LOG_SUCCESS_SAMPLE_RATE` is configured on `pushSync`; authentication
+failures can also be sampled and rate-limited by
+`PUSH_LOG_AUTH_FAILURE_SAMPLE_RATE` and
+`PUSH_LOG_AUTH_FAILURE_MAX_PER_MINUTE`.
 
 This mirrors the Mini Program `readDashboard` function while replacing OPENID
 authorization with Web-appropriate token authorization.
